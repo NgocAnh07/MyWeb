@@ -1,0 +1,100 @@
+{
+  "name": "@fortawesome/vue-fontawesome",
+  "description": "Official Vue component for Font Awesome 7",
+  "version": "3.3.3",
+  "main": "index.js",
+  "files": [
+    "README.md",
+    "LICENSE.txt",
+    "UPGRADING.md",
+    "CHANGELOG.md",
+    "index.d.ts",
+    "index.es.js",
+    "index.js",
+    "src/components/**.js",
+    "src/**.js"
+  ],
+  "module": "index.es.js",
+  "jsnext:main": "index.es.js",
+  "types": "index.d.ts",
+  "homepage": "https://github.com/FortAwesome/vue-fontawesome",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FortAwesome/vue-fontawesome.git"
+  },
+  "contributors": [
+    "Aaron Parker <github.com/parkeyparker>",
+    "Brandon Mork <github.com/brandon-mork>",
+    "btaens <github.com/btaens>",
+    "David Driscoll <github.com/david-driscoll>",
+    "Graham Campbell <github.com/GrahamCampbell>",
+    "Liu Xinyu <github.com/meteorlxy>",
+    "Michael Cozzolino <https://github.com/michaelcozzolino>",
+    "Okke Tijhuis <github.com/otijhuis>",
+    "Romain Failla <https://github.com/rigma>",
+    "SirLamer <github.com/SirLamer>",
+    "Tyranteon <github.com/tyranteon>",
+    "Vinicius Rangel <github.com/viniciuslrangel>",
+    "Xaver Schulz <github.com/schulz3000>",
+    "Yannick Ihmels <github.com/ihmels>",
+    "Brian Talbot <https://github.com/talbs>",
+    "Frances Botsford <https://github.com/frrrances>",
+    "Jason Lundien <https://github.com/jasonlundien>",
+    "Mike Wilkerson <https://github.com/mlwilkerson>",
+    "Rob Madole <rob@fontawesome.com>",
+    "Travis Chase <travis@fontawesome.com>"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "rollup -c rollup.config.js",
+    "dist": "cross-env NODE_ENV=production npm run build",
+    "test": "vitest run",
+    "test:types": "vitest run --typecheck.only",
+    "prepack": "npm run dist"
+  },
+  "lint-staged": {
+    "README.md": [
+      "markdown-toc -i",
+      "git add"
+    ]
+  },
+  "peerDependencies": {
+    "@fortawesome/fontawesome-svg-core": "~1 || ~6 || ~7",
+    "vue": ">= 3.0.0 < 4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.18.2",
+    "@babel/plugin-external-helpers": "^7.17.12",
+    "@babel/plugin-proposal-class-properties": "^7.17.12",
+    "@babel/plugin-proposal-json-strings": "^7.17.12",
+    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
+    "@babel/plugin-syntax-import-meta": "^7.10.4",
+    "@babel/preset-env": "^7.18.2",
+    "@fortawesome/fontawesome-svg-core": "^7.0.0",
+    "@fortawesome/free-brands-svg-icons": "^7.0.0",
+    "@fortawesome/free-solid-svg-icons": "^7.0.0",
+    "@rollup/plugin-babel": "^5.3.1",
+    "@rollup/plugin-commonjs": "^22.0.0",
+    "@rollup/plugin-node-resolve": "^13.3.0",
+    "@vue/test-utils": "^2.4.6",
+    "babel-core": "^7.0.0-bridge.0",
+    "concurrently": "^7.2.1",
+    "cross-env": "^7.0.3",
+    "humps": "^2.0.1",
+    "husky": "^8.0.1",
+    "jsdom": "^22.1.0",
+    "lint-staged": "^13.0.0",
+    "vitest": "^4.0.16",
+    "markdown-toc": "^1.2.0",
+    "prettier": "^3.0.3",
+    "rollup": "^2.75.6",
+    "typescript": "^6.0.0",
+    "vue": "^3.0.0"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "lint-staged"
+    }
+  },
+  "dependencies": {}
+}
