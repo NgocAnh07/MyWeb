@@ -336,7 +336,7 @@ onMounted(async () => {
 
 </section>
   <!-- ===================== ABOUT  ===================== -->
-  <section id="about" class="section-padding bg-slate-50 dark:bg-slate-800">
+  <section id="about" class="section-padding bg-slate-900">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid lg:grid-cols-2 gap-16 items-center">
         <!-- Image -->
@@ -359,10 +359,10 @@ onMounted(async () => {
             <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
             meet the artist
           </span>
-          <h2 class="font-heading font-bold text-3xl lg:text-4xl text-slate-900 dark:text-white mt-3 mb-5">
+          <h2 class="font-heading font-bold text-3xl lg:text-4xl text-white mt-3 mb-5">
             Đôi bàn tay tài hoa lướt trên khung canvas, đánh thức những sắc màu và tạo nên tác phẩm để đời.
           </h2>
-          <p class="text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
+          <p class="text-slate-300 leading-relaxed mb-6">
             Duy art là họa sĩ tranh sơn dầu kết hợp sự kiên nhẫn bậc thầy và tư duy màu sắc tinh tế để thổi hồn vào từng lớp màu đặc quánh.
           </p>
 
@@ -397,14 +397,18 @@ onMounted(async () => {
   </section>
 
   <!-- ===================== SERVICES ===================== -->
-  <section id="services" class="section-padding bg-white dark:bg-slate-900">
+  <section
+  id="services"
+  class="section-padding"
+  style="background-color: #172033;;"
+>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center mb-12" data-aos="fade-up">
         <span class="section-tag mb-4">
           <i data-lucide="heart-pulse" class="w-3.5 h-3.5"></i>
           Dịch vụ của chúng tôi
         </span>
-        <h2 class="font-heading font-bold text-3xl lg:text-4xl text-slate-900 dark:text-white mt-3">Vẽ tranh theo yêu cầu</h2>
+        <h2 class="font-heading font-bold text-3xl lg:text-4xl text-white mt-3">Vẽ tranh theo yêu cầu</h2>
       </div>
 
       <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -417,7 +421,7 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh chân dung
           </h3>
           
-          <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
+          <p class="text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
@@ -600,7 +604,11 @@ onMounted(async () => {
 </section>
 
 <!-- ===================== BLOG ===================== -->
-<section id="blog" class="section-padding bg-slate-50 dark:bg-slate-800">
+<section
+  id="blog"
+  class="section-padding"
+  style="background-color: #0f172a;"
+>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
     <div class="text-center mb-12" data-aos="fade-up">
@@ -610,12 +618,12 @@ onMounted(async () => {
       </span>
 
       <h2
-        class="font-heading font-bold text-3xl lg:text-4xl text-slate-900 dark:text-white mt-3"
+        class="font-heading font-bold text-3xl lg:text-4xl text-white mt-3"
       >
         Góc chia sẻ
       </h2>
 
-      <p class="text-slate-500 dark:text-slate-400 mt-3 max-w-xl mx-auto">
+      <p class="text-slate-300 mt-3 max-w-xl mx-auto">
         Khám phá những câu chuyện và kiến thức thú vị về hội họa.
       </p>
     </div>
@@ -714,15 +722,19 @@ onMounted(async () => {
 </section>
 
   <!-- ===================== CONTACT ===================== -->
-  <section id="contact" class="section-padding bg-white dark:bg-slate-900">
+  <section
+  id="contact"
+  class="section-padding"
+  style="background-color: #172033;"
+>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center mb-12" data-aos="fade-up">
         <span class="section-tag mb-4">
           <i data-lucide="map-pin" class="w-3.5 h-3.5"></i>
           Liên hệ
         </span>
-        <h2 class="font-heading font-bold text-3xl lg:text-4xl text-slate-900 dark:text-white mt-3">Get In Touch</h2>
-        <p class="text-slate-500 dark:text-slate-400 mt-3">Liên hệ theo thông tin bên dưới để được hỗ trợ</p>
+        <h2 class="font-heading font-bold text-3xl lg:text-4xl text-white mt-3">Get In Touch</h2>
+        <p class="text-slate-300 mt-3">Liên hệ theo thông tin bên dưới để được hỗ trợ</p>
       </div>
 
       <div class="grid lg:grid-cols-3 gap-6 mb-10">
