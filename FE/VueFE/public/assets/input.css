@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Custom CSS */
+
+@theme {
+  --color-primary: #2563eb;
+  --color-secondary: #7c3aed;
+  --font-sans: "Inter", sans-serif;
+}
+
+/* Optional reusable classes */
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 transition;
+  }
+
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4;
+  }
+}
