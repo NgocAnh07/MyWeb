@@ -71,6 +71,81 @@ function extractBlog(payload: unknown): BlogPost | null {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function isSafeLink(value: string): boolean {
+  return /^https?:\/\//i.test(value) || (/^\/(?!\/)/.test(value)) || value.startsWith('#') || value.startsWith('./') || value.startsWith('../')
+}
+
+function safeDescriptionHtml(rawValue: string): string {
+  const value = rawValue ?? ''
+  const hasHtmlBlocks = /<\s*(p|h[2-6]|ul|ol|li|strong|b|em|i|u|blockquote|a|img|figure|br|hr)\b/i.test(value)
+  const inputHtml = hasHtmlBlocks
+    ? value
+    : value.trim().split(/\n\s*\n/).map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`).join('')
+
+  const template = document.createElement('template')
+  template.innerHTML = inputHtml
+  template.content.querySelectorAll('script,style,iframe,object,embed,svg,math,form,input,button,textarea,select,video,audio,link,meta').forEach(node => node.remove())
+
+  const allowedTags = new Set(['DIV', 'P', 'BR', 'HR', 'H2', 'H3', 'H4', 'STRONG', 'B', 'EM', 'I', 'U', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'A', 'IMG', 'FIGURE', 'FIGCAPTION'])
+  const walk = (parent: ParentNode) => {
+    Array.from(parent.childNodes).forEach(node => {
+      if (!(node instanceof HTMLElement)) return
+      walk(node)
+      if (!allowedTags.has(node.tagName)) {
+        node.replaceWith(...Array.from(node.childNodes))
+        return
+      }
+
+      const allowedAttributes = node.tagName === 'A'
+        ? new Set(['href', 'title', 'target', 'rel'])
+        : node.tagName === 'IMG'
+          ? new Set(['src', 'alt', 'title', 'width', 'height', 'loading'])
+          : new Set(['title'])
+
+      Array.from(node.attributes).forEach(attribute => {
+        if (!allowedAttributes.has(attribute.name.toLowerCase())) node.removeAttribute(attribute.name)
+      })
+
+      if (node.tagName === 'A') {
+        const href = node.getAttribute('href') ?? ''
+        if (!isSafeLink(href)) node.removeAttribute('href')
+        if (node.getAttribute('target') === '_blank') node.setAttribute('rel', 'noopener noreferrer')
+        else {
+          node.removeAttribute('target')
+          node.removeAttribute('rel')
+        }
+      }
+
+      if (node.tagName === 'IMG') {
+        const src = node.getAttribute('src') ?? ''
+        if (!src || !isSafeLink(src) && !/^storage\//i.test(src)) {
+          node.remove()
+          return
+        }
+        if (/^storage\//i.test(src)) {
+          node.setAttribute('src', imageUrl(src))
+        } else if (src.startsWith('/storage/')) {
+          node.setAttribute('src', imageUrl(src))
+        }
+        node.setAttribute('alt', node.getAttribute('alt') ?? '')
+        node.setAttribute('loading', 'lazy')
+      }
+    })
+  }
+
+  walk(template.content)
+  return template.innerHTML
+}
+
 async function loadRelatedBlogs(currentId: number) {
   relatedLoading.value = true
   try {
@@ -90,6 +165,7 @@ async function loadBlog() {
   blog.value = null
   relatedBlogs.value = []
   errorMessage.value = ''
+  document.title = 'Chi tiết bài viết | Duy Chân Dung'
 
   if (blogId.value === null) {
     errorMessage.value = 'Đường dẫn bài viết không hợp lệ.'
@@ -103,6 +179,7 @@ async function loadBlog() {
     if (!result) throw new Error('Dữ liệu bài viết không đúng định dạng.')
 
     blog.value = result
+    document.title = `${result.title} | Duy Chân Dung`
     void loadRelatedBlogs(result.id)
   } catch (error) {
     console.error('Không tải được chi tiết bài viết:', error)
@@ -124,7 +201,7 @@ watch(blogId, () => { void loadBlog() })
       <div class="blog-detail-shell">
         <router-link to="/" class="blog-detail-back">← Về trang chủ</router-link>
         <p class="blog-detail-eyebrow">GÓC CHIA SẺ · DUY CHÂN DUNG</p>
-        <h1>Blog <span>&amp; Câu chuyện</span></h1>
+        <p class="blog-detail-hero-title">Góc chia sẻ <span>&amp; Câu chuyện</span></p>
         <p class="blog-detail-hero-text">Những câu chuyện, cảm hứng và kinh nghiệm xoay quanh nghệ thuật chân dung.</p>
       </div>
     </section>
@@ -155,7 +232,7 @@ watch(blogId, () => { void loadBlog() })
       <article class="blog-detail-article">
         <header class="blog-detail-article-header">
           <span class="blog-detail-tag">BÀI VIẾT</span>
-          <h2>{{ blog.title }}</h2>
+          <h1>{{ blog.title }}</h1>
           <div class="blog-detail-meta">
             <span class="blog-detail-meta-icon" aria-hidden="true">◷</span>
             <time v-if="blog.created_at" :datetime="blog.created_at">{{ formatDate(blog.created_at) }}</time>
@@ -171,9 +248,7 @@ watch(blogId, () => { void loadBlog() })
           <p>{{ blog.title }}</p>
         </div>
 
-        <div class="blog-detail-body">
-          <p>{{ blog.description }}</p>
-        </div>
+        <div class="blog-detail-body" v-html="safeDescriptionHtml(blog.description)"></div>
 
         <footer class="blog-detail-article-footer">
           <router-link to="/" class="blog-detail-text-link">← Quay lại trang chủ</router-link>
@@ -246,8 +321,8 @@ watch(blogId, () => { void loadBlog() })
 .blog-detail-back{display:inline-flex;align-items:center;gap:8px;color:#cbd5e1;font-size:13px;text-decoration:none;transition:color .2s}
 .blog-detail-back:hover{color:#fff}
 .blog-detail-eyebrow{margin:30px 0 10px;color:#f87171;font-size:10px;font-weight:800;letter-spacing:2px}
-.blog-detail-hero h1{margin:0;color:#fff;font-size:clamp(30px,5vw,50px);font-weight:900;line-height:1.15;letter-spacing:-1px}
-.blog-detail-hero h1 span{color:#fb7185;font-weight:500}
+.blog-detail-hero-title{margin:0;color:#fff;font-size:clamp(30px,5vw,50px);font-weight:900;line-height:1.15;letter-spacing:-1px}
+.blog-detail-hero-title span{color:#fb7185;font-weight:500}
 .blog-detail-hero-text{max-width:620px;margin:14px 0 0;color:#cbd5e1;font-size:14px;line-height:1.8}
 .blog-detail-content{padding-top:28px;padding-bottom:64px}
 .blog-detail-breadcrumb{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-bottom:24px;color:#94a3b8;font-size:12px}
@@ -257,7 +332,7 @@ watch(blogId, () => { void loadBlog() })
 .blog-detail-article{overflow:hidden;border:1px solid #e2e8f0;border-radius:22px;background:#fff;box-shadow:0 10px 35px rgb(15 23 42 / 5%)}
 .blog-detail-article-header{max-width:880px;margin:0 auto;padding:clamp(24px,5vw,54px) clamp(20px,5vw,58px) 30px;text-align:center}
 .blog-detail-tag{display:inline-block;padding:7px 11px;border-radius:999px;background:#fff1f2;color:#be123c;font-size:10px;font-weight:900;letter-spacing:1.2px}
-.blog-detail-article-header h2{margin:20px 0 16px;color:#0f172a;font-size:clamp(26px,4vw,42px);font-weight:900;line-height:1.28;overflow-wrap:anywhere}
+.blog-detail-article-header h1{margin:20px 0 16px;color:#0f172a;font-size:clamp(26px,4vw,42px);font-weight:900;line-height:1.28;overflow-wrap:anywhere}
 .blog-detail-meta{display:flex;align-items:center;justify-content:center;gap:7px;color:#94a3b8;font-size:12px}
 .blog-detail-meta-icon{font-size:18px;color:#dc2626}
 .blog-detail-cover{display:flex;max-height:620px;min-height:220px;align-items:center;justify-content:center;overflow:hidden;margin:0;background:#e2e8f0}
@@ -265,8 +340,21 @@ watch(blogId, () => { void loadBlog() })
 .blog-detail-cover-empty{min-height:260px;flex-direction:column;background:linear-gradient(135deg,#1e293b,#7f1d1d);color:#fff;text-align:center}
 .blog-detail-cover-empty span{font-size:11px;font-weight:900;letter-spacing:3px;color:#fda4af}
 .blog-detail-cover-empty p{max-width:80%;font-size:26px;font-weight:800}
-.blog-detail-body{max-width:850px;margin:0 auto;padding:clamp(26px,5vw,54px) clamp(20px,5vw,45px);color:#475569;font-size:16px;line-height:2;white-space:pre-line;overflow-wrap:anywhere}
-.blog-detail-body p{margin:0}
+.blog-detail-body{max-width:850px;margin:0 auto;padding:clamp(26px,5vw,54px) clamp(20px,5vw,45px);color:#475569;font-size:16px;line-height:1.9;overflow-wrap:anywhere}
+.blog-detail-body :deep(p){margin:0 0 1.15em}
+.blog-detail-body :deep(h2){margin:1.8em 0 .65em;color:#0f172a;font-size:clamp(22px,3vw,30px);font-weight:850;line-height:1.35}
+.blog-detail-body :deep(h3){margin:1.5em 0 .55em;color:#1e293b;font-size:clamp(18px,2.5vw,23px);font-weight:800;line-height:1.4}
+.blog-detail-body :deep(h4){margin:1.25em 0 .5em;color:#334155;font-size:18px;font-weight:800}
+.blog-detail-body :deep(ul),.blog-detail-body :deep(ol){margin:0 0 1.2em;padding-left:1.5em}
+.blog-detail-body :deep(ul){list-style:disc}.blog-detail-body :deep(ol){list-style:decimal}
+.blog-detail-body :deep(li){margin:.35em 0;padding-left:.25em}
+.blog-detail-body :deep(blockquote){margin:1.3em 0;padding:12px 18px;border-left:4px solid #dc2626;background:#f8fafc;color:#334155}
+.blog-detail-body :deep(a){color:#16834b;text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.blog-detail-body :deep(figure){margin:1.7em 0;text-align:center}
+.blog-detail-body :deep(img){display:block;max-width:100%;max-height:700px;height:auto;margin:0 auto;border-radius:12px;object-fit:contain}
+.blog-detail-body :deep(figcaption){margin-top:8px;color:#64748b;font-size:12px;font-style:italic}
+.blog-detail-body :deep(hr){margin:2em 0;border:0;border-top:1px solid #e2e8f0}
+
 .blog-detail-article-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:20px clamp(20px,5vw,45px);border-top:1px solid #e2e8f0;color:#94a3b8;font-size:12px}
 .blog-detail-article-footer strong{color:#dc2626;font-weight:900}
 .blog-detail-text-link{color:#dc2626;font-size:13px;font-weight:800;text-decoration:none}

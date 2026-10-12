@@ -48,6 +48,13 @@ function blogImageUrl(path: string | null | undefined): string {
   return `${STORAGE_BASE_URL}/storage/${normalizedPath}`
 }
 
+function blogExcerpt(description: string | null | undefined): string {
+  if (!description) return ''
+  const template = document.createElement('template')
+  template.innerHTML = description
+  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
 function formatBlogDate(date: string | undefined): string {
   if (!date) return ''
 
@@ -336,7 +343,7 @@ onMounted(async () => {
 
 </section>
   <!-- ===================== ABOUT  ===================== -->
-  <section id="about" class="section-padding bg-slate-900">
+  <section id="about" class="section-padding" style="background-color: #0f172a;">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid lg:grid-cols-2 gap-16 items-center">
         <!-- Image -->
@@ -369,19 +376,19 @@ onMounted(async () => {
           <div class="grid grid-cols-2 gap-4 mb-8">
             <div class="bg-white dark:bg-slate-700 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
               <div class="font-heading font-bold text-2xl text-red-600">20+</div>
-              <div class="text-sm text-slate-500 dark:text-slate-400">Năm kinh nghiệm</div>
+              <div class="text-sm text-slate-500">Năm kinh nghiệm</div>
             </div>
             <div class="bg-white dark:bg-slate-700 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
               <div class="font-heading font-bold text-2xl text-red-600">7K+</div>
-              <div class="text-sm text-slate-500 dark:text-slate-400">Tác phẩm tranh sơn dầu</div>
+              <div class="text-sm text-slate-500">Tác phẩm tranh sơn dầu</div>
             </div>
             <div class="bg-white dark:bg-slate-700 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
               <div class="font-heading font-bold text-2xl text-red-600">4k+</div>
-              <div class="text-sm text-slate-500 dark:text-slate-400">Tranh chân dung</div>
+              <div class="text-sm text-slate-500">Tranh chân dung</div>
             </div>
             <div class="bg-white dark:bg-slate-700 rounded-xl p-4 border border-gray-100 dark:border-slate-600">
               <div class="font-heading font-bold text-2xl text-red-600">50+</div>
-              <div class="text-sm text-slate-500 dark:text-slate-400">khách hàng quay lại sử dụng dịch vụ</div>
+              <div class="text-sm text-slate-500">khách hàng quay lại sử dụng dịch vụ</div>
             </div>
           </div>
 
@@ -397,11 +404,7 @@ onMounted(async () => {
   </section>
 
   <!-- ===================== SERVICES ===================== -->
-  <section
-  id="services"
-  class="section-padding"
-  style="background-color: #172033;;"
->
+  <section id="services" class="section-padding" style="background-color: #172033;">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center mb-12" data-aos="fade-up">
         <span class="section-tag mb-4">
@@ -421,8 +424,8 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh chân dung
           </h3>
           
-          <p class="text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
-          <a href="#"
+          <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
+          <a href="heart-health.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -437,7 +440,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh phong cảnh</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện trọn vẹn những khung cảnh diễm lệ nhất của thế giới vào trong kiệt tác</p>
-          <a href="#"
+          <a href="ECG-diagnostics.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -453,7 +456,7 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh ghép mặt
           </h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện bản thân vào khung cảnh lịch sử hoặc nhân vật lịch sử</p>
-          <a href="#"
+          <a href="hypertension-management.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -468,7 +471,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ hoa quả</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Lớp màu sơn dầu khắc họa vẻ đẹp mọng nước, tràn đầy sức sống của cỏ cây</p>
-          <a href="#"
+          <a href="cardiac-rehabilitation.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -483,7 +486,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ hoa</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Đôi bàn tay tài hoa đã thổi nhịp sống vào nét vẽ, làm bừng sáng không gian bằng sắc hoa không bao giờ phai tàn</p>
-          <a href="#"
+          <a href="preventive-cardiology.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -499,7 +502,7 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ Bác Hồ
           </h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Bằng ngôn ngữ hội họa tinh tế, người nghệ sĩ đã khắc nét nên hình ảnh Cha già dân tộc vừa thanh cao, vừa vô cùng gần gũi</p>
-          <a href="#"
+          <a href="Emergency.html"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">xem thêm
             <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
@@ -604,11 +607,7 @@ onMounted(async () => {
 </section>
 
 <!-- ===================== BLOG ===================== -->
-<section
-  id="blog"
-  class="section-padding"
-  style="background-color: #0f172a;"
->
+<section id="blog" class="section-padding" style="background-color: #0f172a;">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
     <div class="text-center mb-12" data-aos="fade-up">
@@ -703,7 +702,7 @@ onMounted(async () => {
           <p
             class="blog-description text-slate-500 dark:text-slate-400 text-sm leading-relaxed"
           >
-            {{ blog.description }}
+            {{ blogExcerpt(blog.description) }}
           </p>
         </div>
         </article>
@@ -722,11 +721,7 @@ onMounted(async () => {
 </section>
 
   <!-- ===================== CONTACT ===================== -->
-  <section
-  id="contact"
-  class="section-padding"
-  style="background-color: #172033;"
->
+  <section id="contact" class="section-padding" style="background-color: #172033;">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center mb-12" data-aos="fade-up">
         <span class="section-tag mb-4">

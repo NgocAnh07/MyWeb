@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
 import { useRoute } from 'vue-router'
@@ -25,9 +25,71 @@ const categories = ref<Category[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
 const descriptionExpanded = ref(false)
+const descriptionContentRef = ref<HTMLDivElement | null>(null)
+const isDescriptionLong = ref(false)
 const relatedProducts = ref<Product[]>([])
 const relatedLoading = ref(false)
-const isDescriptionLong = computed(() => (product.value?.description?.trim().length ?? 0) > 260)
+
+function safeDescriptionHtml(value: string): string {
+  const raw = value.trim()
+  if (!raw) return ''
+  const hasMarkup = /<\s*(p|h[2-4]|ul|ol|li|strong|b|em|i|u|blockquote|a|img|figure|figcaption|br|hr)\b/i.test(raw)
+  const template = document.createElement('template')
+  if (!hasMarkup) {
+    const paragraph = document.createElement('p')
+    paragraph.textContent = raw
+    template.content.appendChild(paragraph)
+    return template.innerHTML
+  }
+  template.innerHTML = raw
+  const allowed = new Set(['P', 'BR', 'HR', 'H2', 'H3', 'H4', 'STRONG', 'B', 'EM', 'I', 'U', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'A', 'IMG', 'FIGURE', 'FIGCAPTION'])
+  template.content.querySelectorAll('*').forEach(element => {
+    if (!allowed.has(element.tagName)) {
+      if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH'].includes(element.tagName)) element.remove()
+      else element.replaceWith(...Array.from(element.childNodes))
+      return
+    }
+    const allowedAttrs = element.tagName === 'A' ? new Set(['href', 'title', 'target']) : element.tagName === 'IMG' ? new Set(['src', 'alt', 'loading']) : new Set<string>()
+    Array.from(element.attributes).forEach(attribute => {
+      if (!allowedAttrs.has(attribute.name.toLowerCase())) element.removeAttribute(attribute.name)
+    })
+    if (element.tagName === 'A') {
+      const href = (element.getAttribute('href') ?? '').trim()
+      if (!/^(https?:\/\/|\/(?!\/)|#|\.\/|\.\.\/)/i.test(href)) element.removeAttribute('href')
+      if (element.getAttribute('target') === '_blank') element.setAttribute('rel', 'noopener noreferrer')
+      else element.removeAttribute('target')
+    }
+    if (element.tagName === 'IMG') {
+      const src = (element.getAttribute('src') ?? '').trim()
+      if (!/^(https?:\/\/|\/storage\/|storage\/)/i.test(src)) element.remove()
+      const alt = element.getAttribute('alt')
+      if (alt === null || !alt.trim()) element.setAttribute('alt', '')
+    }
+  })
+  return template.innerHTML
+}
+
+const renderedDescription = computed(() => safeDescriptionHtml(product.value?.description ?? ''))
+
+// Xác định mô tả dài dựa trên chiều cao nội dung thực tế, không dựa vào số ký tự.
+async function measureDescriptionOverflow() {
+  await nextTick()
+  if (descriptionExpanded.value) return
+
+  const element = descriptionContentRef.value
+  if (!element) {
+    isDescriptionLong.value = false
+    return
+  }
+
+  isDescriptionLong.value = element.scrollHeight > element.clientHeight + 2
+}
+
+watch(renderedDescription, () => {
+  descriptionExpanded.value = false
+  isDescriptionLong.value = false
+  void measureDescriptionOverflow()
+})
 
 // Trình xem ảnh phóng to
 const imageViewerOpen = ref(false)
@@ -412,11 +474,21 @@ onBeforeUnmount(() => {
           <p class="detail-eyebrow">TÁC PHẨM #{{ product.id }}</p>
           <h2>{{ product.name }}</h2>
           <div class="detail-divider"></div>
-          <h3>Thông tin tác phẩm</h3>
-          <p
+          <div class="detail-actions">
+            <router-link to="/#contact" class="detail-primary-button">Liên hệ đặt vẽ <span aria-hidden="true">↗</span></router-link>
+            <button type="button" class="detail-secondary-button" @click="goBack">Quay lại</button>
+          </div>
+        </article>
+
+        <section class="detail-description-panel" aria-labelledby="product-description-title">
+          <h3 id="product-description-title">Thông tin tác phẩm</h3>
+          <div
+            ref="descriptionContentRef"
             class="detail-description"
-            :class="{ 'detail-description-collapsed': isDescriptionLong && !descriptionExpanded }"
-          >{{ product.description || 'Chưa có mô tả cho tác phẩm này.' }}</p>
+            :class="{ 'detail-description-collapsed': !descriptionExpanded }"
+            v-html="renderedDescription || '<p>Chưa có mô tả cho tác phẩm này.</p>'"
+            @load.capture="measureDescriptionOverflow"
+          ></div>
           <button
             v-if="isDescriptionLong"
             type="button"
@@ -427,12 +499,7 @@ onBeforeUnmount(() => {
             {{ descriptionExpanded ? 'Thu gọn' : 'Xem thêm' }}
             <span aria-hidden="true">{{ descriptionExpanded ? '↑' : '↓' }}</span>
           </button>
-
-          <div class="detail-actions">
-            <router-link to="/#contact" class="detail-primary-button">Liên hệ đặt vẽ <span aria-hidden="true">↗</span></router-link>
-            <button type="button" class="detail-secondary-button" @click="goBack">Quay lại</button>
-          </div>
-        </article>
+        </section>
       </div>
 
       <section v-if="product" class="related-products-section" aria-labelledby="related-products-title">
@@ -543,7 +610,11 @@ onBeforeUnmount(() => {
 .detail-hero h1 span { color: #fb7185; font-weight: 500; }
 .detail-hero p { margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.8; }
 .detail-content { padding: 42px 24px 64px; }
-.detail-layout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 34px; align-items: start; }
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); grid-template-rows: auto auto; gap: 22px 34px; align-items: start; }
+.detail-image-panel { grid-column: 1; grid-row: 1; }
+.detail-info-panel { grid-column: 2; grid-row: 1; }
+.detail-description-panel { grid-column: 1 / -1; grid-row: 2; min-width: 0; padding: 24px 26px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 8px 25px rgb(15 23 42 / 4%); }
+.detail-description-panel h3 { margin: 0 0 14px; color: #334155; font-size: 16px; font-weight: 800; line-height: 1.4; }
 .detail-image-panel { display: flex; min-height: 420px; align-items: center; justify-content: center; overflow: hidden; padding: 18px; border: 1px solid #e2e8f0; border-radius: 22px; background: #cbd5e1; box-shadow: 0 12px 28px rgb(15 23 42 / 8%); }
 .detail-image-trigger { position: relative; display: flex; width: 100%; align-items: center; justify-content: center; padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: transparent; cursor: zoom-in; }
 .detail-image { display: block; width: 100%; max-height: 650px; border-radius: 14px; object-fit: contain; }
@@ -591,8 +662,19 @@ onBeforeUnmount(() => {
 .detail-info-panel h2 { margin: 0; color: #0f172a; font-size: clamp(25px, 3vw, 34px); font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
 .detail-divider { height: 1px; margin: 23px 0; background: #e2e8f0; }
 .detail-info-panel h3 { margin: 0 0 10px; color: #334155; font-size: 14px; font-weight: 800; }
-.detail-description { margin: 0; color: #64748b; font-size: 14px; line-height: 1.9; white-space: pre-line; overflow-wrap: anywhere; }
-.detail-description-collapsed { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; }
+.detail-description { margin: 0; color: #64748b; font-size: 14px; line-height: 1.9; overflow-wrap: anywhere; }
+.detail-description :deep(p) { margin: 0 0 12px; }
+.detail-description :deep(strong), .detail-description :deep(b) { color: #334155; font-weight: 800 !important; }
+.detail-description :deep(h2) { margin: 22px 0 10px; color: #0f172a; font-size: 22px; font-weight: 800; line-height: 1.4; }
+.detail-description :deep(h3) { margin: 18px 0 8px; color: #334155; font-size: 18px; font-weight: 800; line-height: 1.4; }
+.detail-description :deep(ul), .detail-description :deep(ol) { margin: 0 0 14px; padding-left: 24px; }
+.detail-description :deep(ul) { list-style: disc; }
+.detail-description :deep(ol) { list-style: decimal; }
+.detail-description :deep(a) { color: #dc2626; text-decoration: underline; }
+.detail-description :deep(img) { display: block; max-width: 100%; height: auto; margin: 16px auto; border-radius: 10px; }
+.detail-description :deep(figure) { margin: 18px 0; text-align: center; }
+.detail-description :deep(figcaption) { margin-top: 6px; color: #64748b; font-size: 12px; font-style: italic; }
+.detail-description-collapsed { max-height: calc(1.9em * 4); overflow: hidden; }
 .detail-description-toggle { display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; padding: 5px 0; border: 0; background: transparent; color: #dc2626; font-size: 13px; font-weight: 800; cursor: pointer; }
 .detail-description-toggle:hover { color: #991b1b; text-decoration: underline; }
 .detail-description-toggle:focus-visible { outline: 2px solid #dc2626; outline-offset: 4px; border-radius: 3px; }
@@ -609,10 +691,12 @@ onBeforeUnmount(() => {
 @media (max-width: 850px) {
   .related-products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .related-product-image-wrap { height: 210px; }
-  .detail-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .detail-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; gap: 20px; }
+  .detail-image-panel, .detail-info-panel, .detail-description-panel { grid-column: 1; grid-row: auto; }
   .detail-image-panel { min-height: 300px; }
   .detail-image { max-height: 520px; }
   .detail-info-panel { padding: 23px; }
+  .detail-description-panel { padding: 23px; }
 }
 @media (max-width: 480px) {
   .related-products-section { margin-top: 38px; padding-top: 26px; }
@@ -625,6 +709,7 @@ onBeforeUnmount(() => {
   .detail-content { padding: 25px 15px 42px; }
   .detail-image-panel { min-height: 240px; padding: 10px; border-radius: 16px; }
   .detail-info-panel { padding: 19px; }
+  .detail-description-panel { padding: 19px; }
   .detail-actions { flex-direction: column; }
   .detail-primary-button, .detail-secondary-button { width: 100%; }
 }

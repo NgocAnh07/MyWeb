@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
@@ -60,6 +60,10 @@ const selectedImage = ref<File | null>(null)
 const imagePreview = ref('')
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const editorRef = ref<HTMLDivElement | null>(null)
+const inlineImageInput = ref<HTMLInputElement | null>(null)
+const inlineImageUploading = ref(false)
+let savedEditorRange: Range | null = null
 
 const form = ref({
 
@@ -345,7 +349,177 @@ function clearImagePreview() {
 
 }
 
-function openCreateModal() {
+
+
+function textOnly(value: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = value
+  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value)
+}
+
+function normalizeEditorHtml(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/<\s*(p|h[2-6]|ul|ol|li|strong|b|em|i|u|blockquote|a|img|figure|br|hr)\b/i.test(trimmed)) {
+    return trimmed
+  }
+  return trimmed.split(/\n\s*\n/)
+    .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
+function syncEditorContent() {
+  form.value.description = editorRef.value?.innerHTML.trim() ?? ''
+}
+
+async function applyEditorHtml(html: string) {
+  await nextTick()
+  const editor = editorRef.value
+  if (!editor) return
+  const template = document.createElement('template')
+  template.innerHTML = normalizeEditorHtml(html)
+  template.content.querySelectorAll('img[src]').forEach(image => {
+    const source = image.getAttribute('src') ?? ''
+    if (source.startsWith('/storage/') || source.startsWith('storage/')) {
+      image.setAttribute('src', imageUrl(source))
+    }
+  })
+  editor.innerHTML = template.innerHTML
+  syncEditorContent()
+}
+
+function saveEditorSelection() {
+  const editor = editorRef.value
+  const selection = window.getSelection()
+  if (!editor || !selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  if (editor.contains(range.commonAncestorContainer)) savedEditorRange = range.cloneRange()
+}
+
+function restoreEditorSelection() {
+  const editor = editorRef.value
+  if (!editor) return
+  editor.focus()
+  const selection = window.getSelection()
+  if (!selection) return
+  if (savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)) {
+    selection.removeAllRanges()
+    selection.addRange(savedEditorRange)
+  }
+  savedEditorRange = null
+}
+
+function executeEditorCommand(command: 'bold' | 'italic' | 'insertUnorderedList' | 'insertOrderedList') {
+  const editor = editorRef.value
+  if (!editor) return
+  restoreEditorSelection()
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  if (!editor.contains(range.commonAncestorContainer)) return
+  // execCommand preserves native contenteditable formatting and typing state.
+  document.execCommand(command, false)
+  syncEditorContent()
+  saveEditorSelection()
+}
+
+function formatEditorBlock(tag: 'p' | 'h2' | 'h3') {
+  const editor = editorRef.value
+  if (!editor) return
+  restoreEditorSelection()
+  document.execCommand('formatBlock', false, tag)
+  syncEditorContent()
+  saveEditorSelection()
+}
+
+function safeEditorLink(url: string): boolean {
+  const value = url.trim()
+  return /^https?:\/\//i.test(value) || /^\/(?!\/)/.test(value) || value.startsWith('#') || value.startsWith('./') || value.startsWith('../')
+}
+
+function insertInternalLink() {
+  if (!editorRef.value) return
+  saveEditorSelection()
+  const selection = window.getSelection()
+  const selectedText = selection?.toString().trim() ?? ''
+  const url = window.prompt('Nhập đường dẫn nội bộ, ví dụ /products/1 hoặc /categories/tranh-chan-dung:', '/products/1')?.trim()
+  if (!url) return
+  if (!safeEditorLink(url)) {
+    window.alert('Đường dẫn không hợp lệ. Hãy dùng URL nội bộ bắt đầu bằng / hoặc địa chỉ HTTPS.')
+    return
+  }
+  restoreEditorSelection()
+  if (selectedText) {
+    document.execCommand('createLink', false, url)
+  } else {
+    const linkText = window.prompt('Nhập nội dung liên kết:', 'Xem thêm')?.trim()
+    if (!linkText) return
+    document.execCommand('insertHTML', false, `<a href="${escapeAttribute(url)}">${escapeHtml(linkText)}</a>`)
+  }
+  syncEditorContent()
+}
+
+function openInlineImagePicker() {
+  saveEditorSelection()
+  inlineImageInput.value?.click()
+}
+
+async function onInlineImageSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    errorMessage.value = 'Vui lòng chọn một file ảnh hợp lệ.'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    errorMessage.value = 'Ảnh chèn trong mô tả không được vượt quá 5 MB.'
+    return
+  }
+  const alt = window.prompt('Nhập ALT mô tả ảnh:')?.trim()
+  if (!alt) {
+    errorMessage.value = 'Ảnh trong mô tả cần có ALT.'
+    return
+  }
+  errorMessage.value = ''
+  inlineImageUploading.value = true
+  try {
+    const body = new FormData()
+    body.append('image', file)
+    // Route này đã được giới hạn bởi auth:sanctum và AdminMiddleware.
+    const response = await axios.post(`${API_URL}/blog-content-images`, body, getConfig())
+    const payload = response.data as { path?: string; url?: string; image?: { path?: string; url?: string } }
+    const path = payload.path ?? payload.url ?? payload.image?.path ?? payload.image?.url
+    if (!path) throw new Error('API tải ảnh không trả về đường dẫn ảnh.')
+    restoreEditorSelection()
+    document.execCommand('insertHTML', false,
+      `<figure><img src="${escapeAttribute(imageUrl(path))}" alt="${escapeAttribute(alt)}" loading="lazy"><figcaption>${escapeHtml(alt)}</figcaption></figure><p><br></p>`)
+    syncEditorContent()
+  } catch (error: unknown) {
+    errorMessage.value = axios.isAxiosError(error)
+      ? ((error.response?.data as { message?: string } | undefined)?.message ?? 'Không tải được ảnh. Kiểm tra Backend và quyền Admin.')
+      : (error instanceof Error ? error.message : 'Không tải được ảnh nội dung.')
+  } finally {
+    inlineImageUploading.value = false
+  }
+}
+
+
+async function openCreateModal() {
 
   editingId.value = null
 
@@ -366,10 +540,11 @@ function openCreateModal() {
   errorMessage.value = ''
 
   showModal.value = true
+  await applyEditorHtml('')
 
 }
 
-function openEditModal(product: Product) {
+async function openEditModal(product: Product) {
 
   editingId.value = product.id
 
@@ -396,12 +571,13 @@ function openEditModal(product: Product) {
   errorMessage.value = ''
 
   showModal.value = true
+  await applyEditorHtml(product.description ?? '')
 
 }
 
 function closeModal() {
 
-  if (saving.value) return
+  if (saving.value || inlineImageUploading.value) return
 
   showModal.value = false
 
@@ -465,7 +641,11 @@ async function saveProduct() {
 
   }
 
-  if (!form.value.description.trim()) {
+  const descriptionHtml = editorRef.value?.innerHTML.trim() ?? form.value.description.trim()
+  const descriptionText = textOnly(descriptionHtml)
+  const hasInlineImage = Boolean(editorRef.value?.querySelector('img'))
+
+  if (!descriptionText && !hasInlineImage) {
 
     errorMessage.value = 'Vui lòng nhập mô tả tranh.'
 
@@ -485,7 +665,7 @@ async function saveProduct() {
 
   body.append('name', form.value.name.trim())
 
-  body.append('description', form.value.description.trim())
+  body.append('description', descriptionHtml)
 
   body.append('category_id', form.value.category_id)
 
@@ -938,7 +1118,7 @@ onBeforeUnmount(() => {
 
                     <div class="product-description">
 
-                      {{ product.description }}
+                      {{ textOnly(product.description) }}
 
                     </div>
 
@@ -1130,23 +1310,35 @@ onBeforeUnmount(() => {
 
           </label>
 
-          <label>
-
-            Mô tả <span class="required">*</span>
-
-            <textarea
-
-              v-model="form.description"
-
-              rows="4"
-
-              placeholder="Mô tả nội dung tranh..."
-
-              required
-
-            ></textarea>
-
-          </label>
+          <div class="product-editor-field">
+            <label for="product-description-editor">Mô tả sản phẩm <span class="required">*</span></label>
+            <div class="product-editor-toolbar" role="toolbar" aria-label="Định dạng mô tả sản phẩm">
+              <button type="button" title="Đoạn văn" @mousedown.prevent="saveEditorSelection" @click="formatEditorBlock('p')">Đoạn văn</button>
+              <button type="button" title="Tiêu đề cấp 2" @mousedown.prevent="saveEditorSelection" @click="formatEditorBlock('h2')">H2</button>
+              <button type="button" title="Tiêu đề cấp 3" @mousedown.prevent="saveEditorSelection" @click="formatEditorBlock('h3')">H3</button>
+              <span class="product-editor-divider"></span>
+              <button type="button" title="In đậm" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('bold')"><strong>B</strong></button>
+              <button type="button" title="In nghiêng" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('italic')"><em>I</em></button>
+              <button type="button" title="Danh sách gạch đầu dòng" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('insertUnorderedList')">• Danh sách</button>
+              <button type="button" title="Danh sách đánh số" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('insertOrderedList')">1. Danh sách</button>
+              <button type="button" title="Chèn liên kết nội bộ" @mousedown.prevent="saveEditorSelection" @click="insertInternalLink">↗ Liên kết</button>
+              <button type="button" title="Chèn ảnh có ALT" :disabled="inlineImageUploading" @mousedown.prevent="saveEditorSelection" @click="openInlineImagePicker">{{ inlineImageUploading ? 'Đang tải ảnh…' : '＋ Ảnh + ALT' }}</button>
+            </div>
+            <div
+              id="product-description-editor"
+              ref="editorRef"
+              class="product-rich-editor"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Mô tả sản phẩm có định dạng"
+              data-placeholder="Viết mô tả sản phẩm. Dùng H2/H3 để chia mục, B để in đậm..."
+              @input="syncEditorContent"
+              @blur="syncEditorContent"
+            ></div>
+            <input ref="inlineImageInput" class="product-inline-image-input" type="file" accept="image/*" @change="onInlineImageSelected" />
+            <small class="product-editor-help">Có thể định dạng chữ, tạo H2/H3, danh sách, liên kết và chèn ảnh có ALT. Ảnh tối đa 5 MB.</small>
+          </div>
 
           <label>
 
@@ -1202,7 +1394,7 @@ onBeforeUnmount(() => {
 
               class="product-cancel-btn"
 
-              :disabled="saving"
+              :disabled="saving || inlineImageUploading"
 
               @click="closeModal"
 
@@ -1218,7 +1410,7 @@ onBeforeUnmount(() => {
 
               class="product-primary-btn"
 
-              :disabled="saving || categories.length === 0"
+              :disabled="saving || inlineImageUploading || categories.length === 0"
 
             >
 
@@ -1227,6 +1419,8 @@ onBeforeUnmount(() => {
                 saving
 
                   ? 'Đang lưu...'
+                  : inlineImageUploading
+                    ? 'Đang tải ảnh...'
 
                   : editingId !== null
 
@@ -2593,5 +2787,32 @@ cursor: pointer;
   }
 
 }
+
+
+
+/* Rich text editor cho mô tả sản phẩm */
+.product-editor-field { display: grid; gap: 8px; min-width: 0; }
+.product-editor-field > label { display: block; color: #435449; font-size: 11px; font-weight: 700; }
+.product-editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px; border: 1px solid #dfe7e1; border-bottom: 0; border-radius: 9px 9px 0 0; background: #f7faf7; }
+.product-editor-toolbar button { min-height: 30px; padding: 6px 9px; border: 1px solid #dce6de; border-radius: 6px; background: #fff; color: #435449; font-size: 11px; font-weight: 650; cursor: pointer; }
+.product-editor-toolbar button:hover { border-color: #94b7a0; background: #edf7ef; }
+.product-editor-toolbar button:disabled { opacity: .55; cursor: wait; }
+.product-editor-divider { width: 1px; height: 23px; margin: 0 3px; background: #dce6de; }
+.product-rich-editor { min-height: 220px; max-height: 45vh; overflow: auto; padding: 14px; border: 1px solid #dfe7e1; border-radius: 0 0 9px 9px; outline: none; background: #fff; color: #26372c; font: 13px/1.8 "Segoe UI", Tahoma, Arial, sans-serif; overflow-wrap: anywhere; }
+.product-rich-editor:focus { border-color: #6fa681; box-shadow: 0 0 0 3px rgb(61 132 83 / 9%); }
+.product-rich-editor:empty::before { content: attr(data-placeholder); color: #a1aaa4; pointer-events: none; }
+.product-rich-editor :deep(strong), .product-rich-editor :deep(b) { font-weight: 700 !important; }
+.product-rich-editor :deep(p) { margin: 0 0 10px; }
+.product-rich-editor :deep(h2) { margin: 18px 0 9px; color: #23382a; font-size: 21px; font-weight: 800; line-height: 1.35; }
+.product-rich-editor :deep(h3) { margin: 15px 0 7px; color: #2f4938; font-size: 17px; font-weight: 800; line-height: 1.4; }
+.product-rich-editor :deep(ul) { margin: 0 0 12px; padding-left: 24px; list-style: disc; }
+.product-rich-editor :deep(ol) { margin: 0 0 12px; padding-left: 24px; list-style: decimal; }
+.product-rich-editor :deep(li) { margin: 4px 0; }
+.product-rich-editor :deep(a) { color: #16834b; text-decoration: underline; }
+.product-rich-editor :deep(figure) { margin: 16px 0; text-align: center; }
+.product-rich-editor :deep(img) { display: inline-block; max-width: 100%; height: auto; border-radius: 8px; object-fit: contain; }
+.product-rich-editor :deep(figcaption) { margin-top: 6px; color: #7b897f; font-size: 11px; font-style: italic; }
+.product-inline-image-input { display: none !important; }
+.product-editor-help { display: block; color: #879389; font-size: 10px; font-weight: 400; line-height: 1.65; }
 
 </style>

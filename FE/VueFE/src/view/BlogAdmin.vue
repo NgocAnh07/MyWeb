@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
 import { useRouter } from 'vue-router'
@@ -25,6 +25,10 @@ const showModal = ref(false)
 const editingId = ref<number | null>(null)
 const selectedImage = ref<File | null>(null)
 const imagePreview = ref('')
+const editorRef = ref<HTMLDivElement | null>(null)
+const inlineImageInput = ref<HTMLInputElement | null>(null)
+const inlineImageUploading = ref(false)
+let savedEditorRange: Range | null = null
 const form = ref({ title: '', description: '' })
 const currentPage = ref(1)
 const lastPage = ref(1)
@@ -129,16 +133,231 @@ function clearImagePreview() {
   imagePreview.value = ''
 }
 
-function openCreateModal() {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value)
+}
+
+function normalizeEditorHtml(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  // Hỗ trợ các bài viết cũ đang lưu dạng văn bản thuần.
+  const hasHtmlBlocks = /<\s*(p|h[2-6]|ul|ol|li|strong|b|em|i|u|blockquote|a|img|figure|br|hr)\b/i.test(trimmed)
+  if (hasHtmlBlocks) return trimmed
+  return trimmed
+    .split(/\n\s*\n/)
+    .map(paragraph => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
+function syncEditorContent() {
+  form.value.description = editorRef.value?.innerHTML.trim() ?? ''
+}
+
+async function applyEditorHtml(html: string) {
+  await nextTick()
+  if (editorRef.value) {
+    const template = document.createElement('template')
+    template.innerHTML = normalizeEditorHtml(html)
+    template.content.querySelectorAll('img[src]').forEach(image => {
+      const source = image.getAttribute('src') ?? ''
+      if (source.startsWith('/storage/') || source.startsWith('storage/')) {
+        image.setAttribute('src', imageUrl(source))
+      }
+    })
+    editorRef.value.innerHTML = template.innerHTML
+  }
+  syncEditorContent()
+}
+
+// Lưu đường dẫn ảnh dưới dạng tương đối để khi chuyển domain không phải sửa từng bài.
+function portableEditorHtml(html: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const storagePrefix = `${STORAGE_BASE_URL}/storage/`
+  template.content.querySelectorAll('img[src]').forEach(image => {
+    const source = image.getAttribute('src') ?? ''
+    if (source.startsWith(storagePrefix)) {
+      image.setAttribute('src', `/storage/${source.slice(storagePrefix.length)}`)
+    }
+  })
+  return template.innerHTML
+}
+
+
+
+function executeEditorCommand(command: string) {
+  const editor = editorRef.value
+  if (!editor) return
+
+  restoreEditorSelection()
+
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+
+  const range = selection.getRangeAt(0)
+
+  // Chỉ xử lý khi vùng chọn nằm trong trình soạn thảo
+  if (!editor.contains(range.commonAncestorContainer)) return
+
+  // Xử lý in đậm trực tiếp bằng thẻ strong
+  if (command === 'bold') {
+    if (range.collapsed) return
+
+    const strong = document.createElement('strong')
+    strong.appendChild(range.extractContents())
+    range.insertNode(strong)
+
+    // Giữ vùng chữ vừa định dạng được chọn
+    const newRange = document.createRange()
+    newRange.selectNodeContents(strong)
+    selection.removeAllRanges()
+    selection.addRange(newRange)
+  } else {
+    document.execCommand(command, false)
+  }
+
+  syncEditorContent()
+}
+
+
+function formatEditorBlock(tag: 'p' | 'h2' | 'h3') {
+  if (!editorRef.value) return
+  editorRef.value.focus()
+  document.execCommand('formatBlock', false, tag)
+  syncEditorContent()
+}
+
+function safeEditorLink(url: string): boolean {
+  const value = url.trim()
+  return /^https?:\/\//i.test(value) || (/^\/(?!\/)/.test(value)) || value.startsWith('#') || value.startsWith('./') || value.startsWith('../')
+}
+
+function saveEditorSelection() {
+  const editor = editorRef.value
+  const selection = window.getSelection()
+  if (!editor || !selection || selection.rangeCount === 0) return
+  const range = selection.getRangeAt(0)
+  if (editor.contains(range.commonAncestorContainer)) {
+    savedEditorRange = range.cloneRange()
+  }
+}
+
+function restoreEditorSelection() {
+  const editor = editorRef.value
+  if (!editor) return
+  editor.focus()
+  const selection = window.getSelection()
+  if (selection && savedEditorRange && editor.contains(savedEditorRange.commonAncestorContainer)) {
+    selection.removeAllRanges()
+    selection.addRange(savedEditorRange)
+  } else if (selection) {
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+  savedEditorRange = null
+}
+
+function insertInternalLink() {
+  if (!editorRef.value) return
+  saveEditorSelection()
+  const selection = window.getSelection()
+  const selectedText = selection?.toString().trim() ?? ''
+  const url = window.prompt('Nhập đường dẫn nội bộ, ví dụ /blogs/1 hoặc /products/2:', '/blogs/1')?.trim()
+  if (!url) return
+  if (!safeEditorLink(url)) {
+    window.alert('Đường dẫn không hợp lệ. Hãy dùng URL nội bộ bắt đầu bằng / hoặc địa chỉ HTTPS.')
+    return
+  }
+  restoreEditorSelection()
+  if (selectedText) {
+    document.execCommand('createLink', false, url)
+  } else {
+    const linkText = window.prompt('Nhập nội dung liên kết:', 'Xem thêm')?.trim()
+    if (!linkText) return
+    document.execCommand('insertHTML', false, `<a href="${escapeAttribute(url)}">${escapeHtml(linkText)}</a>`)
+  }
+  syncEditorContent()
+}
+
+function openInlineImagePicker() {
+  saveEditorSelection()
+  inlineImageInput.value?.click()
+}
+
+async function onInlineImageSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  input.value = ''
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    errorMessage.value = 'Vui lòng chọn một file ảnh hợp lệ.'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    errorMessage.value = 'Ảnh chèn trong nội dung không được vượt quá 5 MB.'
+    return
+  }
+  const alt = window.prompt('Nhập ALT mô tả ảnh (nên mô tả đúng nội dung ảnh):')?.trim()
+  if (!alt) {
+    errorMessage.value = 'Ảnh trong nội dung cần có ALT để hỗ trợ SEO và khả năng tiếp cận.'
+    return
+  }
+
+  errorMessage.value = ''
+  inlineImageUploading.value = true
+  try {
+    const body = new FormData()
+    body.append('image', file)
+    const response = await axios.post(`${API_URL}/blog-content-images`, body, getConfig())
+    const payload = response.data as { path?: string; url?: string; image?: { path?: string; url?: string } }
+    const path = payload.path ?? payload.url ?? payload.image?.path ?? payload.image?.url
+    if (!path) throw new Error('API tải ảnh không trả về đường dẫn ảnh.')
+
+    const resolvedUrl = imageUrl(path)
+    restoreEditorSelection()
+    document.execCommand(
+      'insertHTML',
+      false,
+      `<figure><img src="${escapeAttribute(resolvedUrl)}" alt="${escapeAttribute(alt)}" loading="lazy"><figcaption>${escapeHtml(alt)}</figcaption></figure><p><br></p>`,
+    )
+    syncEditorContent()
+  } catch (error: unknown) {
+    restoreEditorSelection()
+    errorMessage.value = getErrorMessage(error)
+  } finally {
+    inlineImageUploading.value = false
+  }
+}
+
+function textOnly(value: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = value
+  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+async function openCreateModal() {
   editingId.value = null
   form.value = { title: '', description: '' }
   selectedImage.value = null
   clearImagePreview()
   errorMessage.value = ''
   showModal.value = true
+  await applyEditorHtml('')
 }
 
-function openEditModal(blog: Blog) {
+async function openEditModal(blog: Blog) {
   editingId.value = blog.id
   form.value = { title: blog.title, description: blog.description ?? '' }
   selectedImage.value = null
@@ -146,10 +365,11 @@ function openEditModal(blog: Blog) {
   imagePreview.value = imageUrl(blog.img)
   errorMessage.value = ''
   showModal.value = true
+  await applyEditorHtml(blog.description ?? '')
 }
 
 function closeModal() {
-  if (saving.value) return
+  if (saving.value || inlineImageUploading.value) return
   showModal.value = false
   selectedImage.value = null
   clearImagePreview()
@@ -179,18 +399,25 @@ function onImageChange(event: Event) {
 async function saveBlog() {
   errorMessage.value = ''
   successMessage.value = ''
-  if (!form.value.title.trim()) {
+
+  const title = form.value.title.trim()
+  const rawContentHtml = editorRef.value?.innerHTML.trim() ?? form.value.description.trim()
+  const contentHtml = portableEditorHtml(rawContentHtml)
+  const contentText = textOnly(rawContentHtml)
+  const contentHasImage = Boolean(editorRef.value?.querySelector('img'))
+
+  if (!title) {
     errorMessage.value = 'Vui lòng nhập tiêu đề bài viết.'
     return
   }
-  if (!form.value.description.trim()) {
+  if (!contentText && !contentHasImage) {
     errorMessage.value = 'Vui lòng nhập nội dung bài viết.'
     return
   }
 
   const body = new FormData()
-  body.append('title', form.value.title.trim())
-  body.append('description', form.value.description.trim())
+  body.append('title', title)
+  body.append('description', contentHtml)
   if (selectedImage.value) body.append('img', selectedImage.value)
 
   saving.value = true
@@ -300,7 +527,7 @@ onBeforeUnmount(clearImagePreview)
                 <tr v-for="blog in filteredBlogs" :key="blog.id">
                   <td><div class="blog-title-cell"><strong>{{ blog.title }}</strong><small>#{{ blog.id }}</small></div></td>
                   <td><img v-if="blog.img" class="blog-thumbnail" :src="imageUrl(blog.img)" :alt="blog.title" /><span v-else class="blog-no-image">Chưa có ảnh</span></td>
-                  <td><div class="blog-description">{{ blog.description }}</div></td>
+                  <td><div class="blog-description">{{ textOnly(blog.description) }}</div></td>
                   <td><div class="blog-actions"><button class="blog-edit-btn" @click="openEditModal(blog)">Sửa</button><button class="blog-delete-btn" @click="deleteBlog(blog)">Xóa</button></div></td>
                 </tr>
               </tbody>
@@ -313,14 +540,52 @@ onBeforeUnmount(clearImagePreview)
 
     <div v-if="showModal" class="blog-modal-overlay" @click.self="closeModal">
       <section class="blog-modal" role="dialog" aria-modal="true" aria-labelledby="blog-modal-title">
-        <header class="blog-modal-header"><div><span>QUẢN LÝ NỘI DUNG</span><h2 id="blog-modal-title">{{ editingId !== null ? 'Cập nhật bài viết' : 'Thêm bài viết mới' }}</h2></div><button type="button" class="blog-modal-close" :disabled="saving" @click="closeModal">×</button></header>
+        <header class="blog-modal-header"><div><span>QUẢN LÝ NỘI DUNG</span><h2 id="blog-modal-title">{{ editingId !== null ? 'Cập nhật bài viết' : 'Thêm bài viết mới' }}</h2></div><button type="button" class="blog-modal-close" :disabled="saving || inlineImageUploading" @click="closeModal">×</button></header>
         <form class="blog-form" @submit.prevent="saveBlog">
-          <label>Tiêu đề bài viết <span class="required">*</span><input v-model="form.title" type="text" maxlength="255" placeholder="Nhập tiêu đề" required /></label>
-          <label>Mô tả / Nội dung <span class="required">*</span><textarea v-model="form.description" rows="5" placeholder="Nhập nội dung bài viết..." required /></label>
-          <label>Ảnh bài viết<input type="file" accept="image/*" @change="onImageChange" /><small>Ảnh tối đa 2 MB. Khi sửa, không chọn ảnh mới sẽ giữ ảnh cũ.</small></label>
+          
+          <div class="blog-editor-field">
+            <label for="blog-title-input">Tiêu đề bài viết <span class="required">*</span></label>
+            <input id="blog-title-input" v-model="form.title" type="text" maxlength="255" placeholder="Nhập tiêu đề bài viết" required />
+            <small class="blog-editor-help">Tiêu đề này sẽ tự trở thành thẻ H1 ở trang chi tiết. Không cần tự chèn H1 trong nội dung.</small>
+          </div>
+          <div class="blog-editor-field">
+            <label>Nội dung bài viết <span class="required">*</span></label>
+            <div class="blog-editor-toolbar" role="toolbar" aria-label="Định dạng nội dung bài viết">
+              <button type="button" title="Đoạn văn" @mousedown.prevent @click="formatEditorBlock('p')">Đoạn văn</button>
+              <button type="button" title="Tiêu đề cấp 2" @mousedown.prevent @click="formatEditorBlock('h2')">H2</button>
+              <button type="button" title="Tiêu đề cấp 3" @mousedown.prevent @click="formatEditorBlock('h3')">H3</button>
+              <span class="blog-toolbar-divider"></span>
+              <button
+  type="button"
+  title="In đậm"
+  @mousedown.prevent="saveEditorSelection"
+  @click="executeEditorCommand('bold')"
+>
+  <strong>B</strong>
+</button>
+              <button type="button" title="In nghiêng" @mousedown.prevent @click="executeEditorCommand('italic')"><em>I</em></button>
+              <button type="button" title="Danh sách gạch đầu dòng" @mousedown.prevent @click="executeEditorCommand('insertUnorderedList')">• Danh sách</button>
+              <button type="button" title="Chèn liên kết nội bộ" @mousedown.prevent @click="insertInternalLink">↗ Liên kết</button>
+              <button type="button" title="Chèn ảnh có ALT" :disabled="inlineImageUploading" @mousedown.prevent @click="openInlineImagePicker">{{ inlineImageUploading ? 'Đang tải ảnh…' : '＋ Ảnh + ALT' }}</button>
+            </div>
+            <div
+              ref="editorRef"
+              class="blog-rich-editor"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Nội dung bài viết có định dạng"
+              data-placeholder="Viết nội dung bài viết tại đây. Dùng H2 cho các mục lớn, H3 cho mục nhỏ..."
+              @input="syncEditorContent"
+              @blur="syncEditorContent"
+            ></div>
+            <input ref="inlineImageInput" class="blog-inline-image-input" type="file" accept="image/*" @change="onInlineImageSelected" />
+            <small class="blog-editor-help">H1 được tạo từ tiêu đề bài viết. Dùng H2/H3 để chia mục; ảnh trong nội dung cần ALT. Đường dẫn nội bộ có thể là /blogs/1 hoặc /products/2. Ảnh tối đa 5 MB.</small>
+          </div>
+          <label>Ảnh bài viết<input type="file" accept="image/*" @change="onImageChange" /><small>Ảnh tối đa 5 MB. Khi sửa, không chọn ảnh mới sẽ giữ ảnh cũ.</small></label>
           <div v-if="imagePreview" class="blog-image-preview"><img :src="imagePreview" alt="Xem trước ảnh bài viết" /></div>
           <p v-if="errorMessage" class="blog-form-error">{{ errorMessage }}</p>
-          <footer class="blog-form-footer"><button type="button" class="blog-cancel-btn" :disabled="saving" @click="closeModal">Hủy</button><button type="submit" class="blog-primary-btn" :disabled="saving">{{ saving ? 'Đang lưu...' : editingId !== null ? 'Lưu thay đổi' : 'Thêm bài viết' }}</button></footer>
+          <footer class="blog-form-footer"><button type="button" class="blog-cancel-btn" :disabled="saving || inlineImageUploading" @click="closeModal">Hủy</button><button type="submit" class="blog-primary-btn" :disabled="saving || inlineImageUploading">{{ saving ? 'Đang lưu...' : inlineImageUploading ? 'Đang tải ảnh...' : editingId !== null ? 'Lưu thay đổi' : 'Thêm bài viết' }}</button></footer>
         </form>
       </section>
     </div>
@@ -329,4 +594,33 @@ onBeforeUnmount(clearImagePreview)
 
 <style scoped>
 .blog-layout,.blog-layout *{box-sizing:border-box}.blog-layout{--green:#28784e;--green-dark:#185938;--bg:#f5f7f5;--text:#26372c;display:flex;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Segoe UI",Tahoma,Arial,sans-serif;font-size:14px}.blog-sidebar{position:sticky;top:0;display:flex;flex:0 0 245px;flex-direction:column;width:245px;height:100vh;padding:25px 16px 17px;border-right:1px solid #e7ece8;background:#fff}.blog-brand{display:flex;align-items:center;gap:10px;margin-bottom:38px;padding:0 7px;color:var(--text);text-decoration:none}.blog-brand img{width:42px;height:42px;border-radius:9px;object-fit:contain}.blog-brand strong,.blog-brand small{display:block}.blog-brand strong{font-size:14px}.blog-brand small{margin-top:4px;color:#929d95;font-size:9px;letter-spacing:1.5px}.blog-menu-label{margin:0 10px 12px;color:#a0aaa3;font-size:10px;font-weight:800;letter-spacing:1.1px}.blog-nav{display:grid;gap:7px}.blog-nav-item{display:flex;min-height:44px;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;color:#6d7b70;font-size:12px;font-weight:600;text-decoration:none}.blog-nav-item span{width:19px;flex-shrink:0;font-size:18px;text-align:center}.blog-nav-active{background:#eaf5ed;color:var(--green-dark)}.blog-sidebar-bottom{margin-top:auto}.blog-profile{display:flex;align-items:center;gap:10px;padding:14px 4px;border-top:1px solid #edf0ed}.blog-avatar{display:grid;width:37px;height:37px;flex-shrink:0;place-items:center;border-radius:11px;background:#deeee2;color:#22633e;font-weight:800}.blog-profile strong,.blog-profile small{display:block}.blog-profile strong{font-size:11px}.blog-profile small{margin-top:4px;color:#89958c;font-size:10px}.blog-logout{width:100%;padding:11px;border:1px solid #e8ece9;border-radius:9px;background:white;color:#657369;cursor:pointer}.blog-logout:hover{background:#fff4f4;color:#c34242}.blog-main{min-width:0;flex:1}.blog-topbar{display:flex;min-height:88px;align-items:center;justify-content:space-between;gap:20px;padding:16px 34px;border-bottom:1px solid #e8ede9;background:#fff}.blog-topbar p{margin:0 0 6px;color:#8b978e;font-size:10px}.blog-topbar h1{margin:0;color:#23382a;font-size:22px}.blog-view-site{color:#607267;font-size:12px;text-decoration:none}.blog-content{width:100%;max-width:1450px;margin:0 auto;padding:28px 34px}.blog-intro{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}.blog-intro>div>span,.blog-modal-header span{color:#548665;font-size:9px;font-weight:800;letter-spacing:1.4px}.blog-intro h2{margin:8px 0;color:#244b31;font-size:25px}.blog-intro p{margin:0;color:#7b897f;font-size:12px;line-height:1.7}.blog-primary-btn{display:inline-flex;min-height:40px;align-items:center;justify-content:center;gap:7px;padding:10px 15px;border:1px solid var(--green);border-radius:8px;background:var(--green);color:#fff;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}.blog-primary-btn:hover{background:var(--green-dark)}.blog-primary-btn:disabled{opacity:.6;cursor:wait}.blog-alert{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px;padding:12px 15px;border:1px solid;border-radius:9px;font-size:12px;line-height:1.6}.blog-alert button{border:0;background:transparent;color:inherit;cursor:pointer}.blog-alert-error{border-color:#f0d4d4;background:#fff4f4;color:#a73e3e}.blog-alert-success{border-color:#d5eadb;background:#f1faf3;color:#287346}.blog-summary{display:flex;width:fit-content;min-width:210px;align-items:center;gap:13px;margin-bottom:22px;padding:17px 20px;border:1px solid #e7ece8;border-radius:12px;background:#fff}.blog-summary-icon{display:grid;width:43px;height:43px;place-items:center;border-radius:10px;background:#e7f5eb;color:#338255;font-size:22px}.blog-summary span,.blog-summary strong{display:block}.blog-summary span{color:#7b897f;font-size:11px}.blog-summary strong{margin-top:4px;font-size:23px}.blog-table-panel{overflow:hidden;border:1px solid #e7ece8;border-radius:13px;background:#fff}.blog-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px}.blog-toolbar h3{margin:0;color:#2b3d30;font-size:14px}.blog-toolbar p{margin:6px 0 0;color:#929d94;font-size:10px}.blog-search{display:flex;width:min(100%,300px);align-items:center;gap:8px;padding:9px 11px;border:1px solid #e5ebe6;border-radius:8px;color:#7c8b80}.blog-search input{width:100%;min-width:0;border:0;outline:none;background:transparent;color:var(--text);font:inherit;font-size:11px}.blog-table-wrap{overflow-x:auto}.blog-table-wrap table{width:100%;border-collapse:collapse;text-align:left}.blog-table-wrap th{padding:13px 18px;border-top:1px solid #edf0ed;border-bottom:1px solid #edf0ed;background:#fafcfb;color:#7c897f;font-size:10px;font-weight:700;white-space:nowrap}.blog-table-wrap td{padding:15px 18px;border-bottom:1px solid #f0f2f0;color:#59685e;font-size:11px}.blog-table-wrap tbody tr:last-child td{border-bottom:0}.blog-title-cell{min-width:160px}.blog-title-cell strong,.blog-title-cell small{display:block}.blog-title-cell strong{max-width:230px;color:#34483a;font-size:11px}.blog-title-cell small{margin-top:4px;color:#9aa49d;font-size:9px}.blog-thumbnail{width:58px;height:48px;border:1px solid #e6ece7;border-radius:7px;object-fit:cover}.blog-no-image{color:#929d94;font-size:10px;white-space:nowrap}.blog-description{display:-webkit-box;max-width:360px;overflow:hidden;line-clamp:3;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-height:1.6}.blog-actions{display:flex;gap:7px}.blog-actions button{padding:6px 9px;border:1px solid;border-radius:6px;font-size:10px;cursor:pointer;white-space:nowrap}.blog-edit-btn{border-color:#dce9df!important;background:#f3faf5;color:#34764b}.blog-delete-btn{border-color:#f0dada!important;background:#fff6f6;color:#bd4545}.blog-empty{height:100px;color:#929d94!important;text-align:center}.blog-table-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;border-top:1px solid #edf0ed;color:#929d94;font-size:10px}.blog-pagination{display:flex;gap:7px}.blog-pagination button{padding:7px 10px;border:1px solid #e2e9e3;border-radius:7px;background:white;color:#597362;cursor:pointer}.blog-pagination button:disabled{opacity:.45;cursor:not-allowed}.blog-modal-overlay{position:fixed;z-index:1000;inset:0;display:flex;align-items:center;justify-content:center;overflow-y:auto;padding:20px;background:rgb(22 39 28 / 45%)}.blog-modal{width:100%;max-width:550px;max-height:calc(100vh - 40px);overflow-y:auto;border:1px solid #e8eee9;border-radius:15px;background:#fff;box-shadow:0 20px 70px rgb(0 0 0 / 15%)}.blog-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:15px;padding:23px 25px 18px;border-bottom:1px solid #edf0ed}.blog-modal-header h2{margin:7px 0 0;color:#244b31;font-size:20px}.blog-modal-close{width:30px;height:30px;border:0;border-radius:7px;background:#f3f6f3;color:#617065;font-size:23px;cursor:pointer}.blog-form{display:grid;gap:16px;padding:23px 25px 25px}.blog-form label{display:grid;gap:7px;color:#435449;font-size:11px;font-weight:700}.blog-form .required{color:#c64a4a}.blog-form input:not([type=file]),.blog-form textarea{width:100%;padding:11px 12px;border:1px solid #dfe7e1;border-radius:8px;outline:none;background:white;color:var(--text);font:inherit;font-size:12px;font-weight:400}.blog-form input[type=file]{width:100%;padding:10px;border:1px dashed #d4e1d6;border-radius:8px;background:#fafcfb;color:#59685e;font-size:11px}.blog-form input:focus,.blog-form textarea:focus{border-color:#6fa681;box-shadow:0 0 0 3px rgb(61 132 83 / 9%)}.blog-form textarea{resize:vertical}.blog-form label small{color:#929d94;font-size:10px;font-weight:400;line-height:1.6}.blog-image-preview{display:flex;justify-content:center;padding:10px;border:1px solid #edf0ed;border-radius:8px;background:#fafcfb}.blog-image-preview img{max-width:100%;max-height:200px;border-radius:6px;object-fit:contain}.blog-form-error{margin:0;color:#b63d3d;font-size:11px;line-height:1.6}.blog-form-footer{display:flex;justify-content:flex-end;gap:9px;padding-top:8px}.blog-cancel-btn{padding:10px 15px;border:1px solid #e1e7e2;border-radius:8px;background:white;color:#637267;font-size:12px;cursor:pointer}.blog-cancel-btn:disabled{opacity:.6}@media(max-width:1100px){.blog-sidebar{flex-basis:220px;width:220px}.blog-content{padding-right:22px;padding-left:22px}.blog-toolbar{align-items:flex-start;flex-direction:column}}@media(max-width:760px){.blog-layout{display:block}.blog-sidebar{position:relative;width:100%;height:auto;padding:13px 15px;border-right:0;border-bottom:1px solid #e6ece7}.blog-brand{margin-bottom:15px}.blog-menu-label,.blog-sidebar-bottom{display:none}.blog-nav{display:flex;gap:6px;overflow-x:auto}.blog-nav-item{flex-shrink:0;min-height:38px;padding:8px;font-size:10px}.blog-topbar{min-height:75px;padding:14px 18px}.blog-topbar h1{font-size:18px}.blog-content{padding:20px 15px}.blog-intro{align-items:flex-start;flex-direction:column}.blog-intro h2{font-size:22px}.blog-toolbar{padding:16px}.blog-search{width:100%}}
+
+/* Trình soạn thảo bài viết hỗ trợ cấu trúc heading và nội dung giàu định dạng */
+.blog-editor-field{display:grid;gap:8px;min-width:0}
+.blog-editor-field>label{display:block;color:#435449;font-size:11px;font-weight:700}
+.blog-editor-field>input:not([type=file]){width:100%;padding:11px 12px;border:1px solid #dfe7e1;border-radius:8px;outline:none;background:#fff;color:var(--text);font:inherit;font-size:12px}
+.blog-editor-help{display:block;color:#879389;font-size:10px;font-weight:400;line-height:1.65}
+.blog-editor-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px;border:1px solid #dfe7e1;border-bottom:0;border-radius:9px 9px 0 0;background:#f7faf7}
+.blog-editor-toolbar button{min-height:30px;padding:6px 9px;border:1px solid #dce6de;border-radius:6px;background:#fff;color:#435449;font-size:11px;font-weight:650;cursor:pointer}
+.blog-editor-toolbar button:hover{border-color:#94b7a0;background:#edf7ef}
+.blog-editor-toolbar button:disabled{opacity:.55;cursor:wait}
+.blog-toolbar-divider{width:1px;height:23px;margin:0 3px;background:#dce6de}
+.blog-rich-editor{min-height:280px;max-height:50vh;overflow:auto;padding:16px;border:1px solid #dfe7e1;border-radius:0 0 9px 9px;outline:none;background:#fff;color:#26372c;font:14px/1.8 "Segoe UI",Tahoma,Arial,sans-serif;overflow-wrap:anywhere}
+.blog-rich-editor :deep(strong),
+.blog-rich-editor :deep(b) {
+  font-weight: 700 !important;
+}
+.blog-rich-editor:focus{border-color:#6fa681;box-shadow:0 0 0 3px rgb(61 132 83 / 9%)}
+.blog-rich-editor:empty::before{content:attr(data-placeholder);color:#a1aaa4;pointer-events:none}
+.blog-rich-editor :deep(p){margin:0 0 12px}
+.blog-rich-editor :deep(h2){margin:22px 0 10px;color:#23382a;font-size:22px;font-weight:800;line-height:1.35}
+.blog-rich-editor :deep(h3){margin:18px 0 8px;color:#2f4938;font-size:18px;font-weight:800;line-height:1.4}
+.blog-rich-editor :deep(ul){margin:0 0 14px;padding-left:25px;list-style:disc}.blog-rich-editor :deep(ol){margin:0 0 14px;padding-left:25px;list-style:decimal}
+.blog-rich-editor :deep(li){margin:4px 0}
+.blog-rich-editor :deep(a){color:#16834b;text-decoration:underline}
+.blog-rich-editor :deep(figure){margin:18px 0;text-align:center}
+.blog-rich-editor :deep(img){display:inline-block;max-width:100%;height:auto;border-radius:8px;object-fit:contain}
+.blog-rich-editor :deep(figcaption){margin-top:6px;color:#7b897f;font-size:11px;font-style:italic}
+.blog-inline-image-input{display:none!important}
+
 </style>
