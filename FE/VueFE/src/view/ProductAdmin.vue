@@ -445,32 +445,108 @@ function formatEditorBlock(tag: 'p' | 'h2' | 'h3') {
   saveEditorSelection()
 }
 
-function safeEditorLink(url: string): boolean {
-  const value = url.trim()
-  return /^https?:\/\//i.test(value) || /^\/(?!\/)/.test(value) || value.startsWith('#') || value.startsWith('./') || value.startsWith('../')
+
+function normalizeEditorUrl(input: string): string | null {
+  const value = input.trim()
+  if (!value) return null
+
+  // Chấp nhận website có sẵn http:// hoặc https://
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value)
+      if (!url.hostname || !['http:', 'https:'].includes(url.protocol)) {
+        return null
+      }
+      return url.href
+    } catch {
+      return null
+    }
+  }
+
+  // Chấp nhận đường dẫn nội bộ
+  if (
+    /^\/(?!\/)/.test(value) ||
+    value.startsWith('#') ||
+    value.startsWith('./') ||
+    value.startsWith('../')
+  ) {
+    return value
+  }
+
+  // Chặn các giao thức nguy hiểm như javascript:
+  if (/^[a-z][a-z\d+.-]*:/i.test(value)) return null
+
+  // Tự thêm HTTPS khi chỉ nhập tên miền
+  const domain = value.startsWith('//') ? value.slice(2) : value
+
+  if (/[\s<>"'`\\]/.test(domain)) return null
+
+  try {
+    const url = new URL(`https://${domain}`)
+
+    if (!url.hostname.includes('.') && url.hostname !== 'localhost') {
+      return null
+    }
+
+    return url.href
+  } catch {
+    return null
+  }
 }
 
 function insertInternalLink() {
-  if (!editorRef.value) return
+  const editor = editorRef.value
+  if (!editor) return
+
   saveEditorSelection()
+
   const selection = window.getSelection()
   const selectedText = selection?.toString().trim() ?? ''
-  const url = window.prompt('Nhập đường dẫn nội bộ, ví dụ /products/1 hoặc /categories/tranh-chan-dung:', '/products/1')?.trim()
-  if (!url) return
-  if (!safeEditorLink(url)) {
-    window.alert('Đường dẫn không hợp lệ. Hãy dùng URL nội bộ bắt đầu bằng / hoặc địa chỉ HTTPS.')
+
+  const input = window.prompt(
+    'Nhập URL website (ví dụ google.com, https://youtube.com) hoặc đường dẫn nội bộ (/products/1):',
+    '',
+  )
+
+  if (!input?.trim()) return
+
+  const url = normalizeEditorUrl(input)
+
+  if (!url) {
+    window.alert('URL không hợp lệ. Hãy nhập địa chỉ website hoặc đường dẫn nội bộ hợp lệ.')
     return
   }
+
   restoreEditorSelection()
+
   if (selectedText) {
     document.execCommand('createLink', false, url)
+
+    const currentSelection = window.getSelection()
+    const node = currentSelection?.anchorNode
+    const element = node instanceof Element ? node : node?.parentElement
+    const anchor = element?.closest('a')
+
+    if (anchor && editor.contains(anchor)) {
+      anchor.setAttribute('target', '_blank')
+      anchor.setAttribute('rel', 'noopener noreferrer')
+    }
   } else {
     const linkText = window.prompt('Nhập nội dung liên kết:', 'Xem thêm')?.trim()
     if (!linkText) return
-    document.execCommand('insertHTML', false, `<a href="${escapeAttribute(url)}">${escapeHtml(linkText)}</a>`)
+
+    document.execCommand(
+      'insertHTML',
+      false,
+      `<a href="${escapeAttribute(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(linkText)}</a>`,
+    )
   }
+
   syncEditorContent()
+  saveEditorSelection()
 }
+
+
 
 function openInlineImagePicker() {
   saveEditorSelection()
@@ -1321,7 +1397,14 @@ onBeforeUnmount(() => {
               <button type="button" title="In nghiêng" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('italic')"><em>I</em></button>
               <button type="button" title="Danh sách gạch đầu dòng" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('insertUnorderedList')">• Danh sách</button>
               <button type="button" title="Danh sách đánh số" @mousedown.prevent="saveEditorSelection" @click="executeEditorCommand('insertOrderedList')">1. Danh sách</button>
-              <button type="button" title="Chèn liên kết nội bộ" @mousedown.prevent="saveEditorSelection" @click="insertInternalLink">↗ Liên kết</button>
+              <button
+  type="button"
+  title="Chèn liên kết website hoặc nội bộ"
+  @mousedown.prevent="saveEditorSelection"
+  @click="insertInternalLink"
+>
+  ↗ Liên kết
+</button>
               <button type="button" title="Chèn ảnh có ALT" :disabled="inlineImageUploading" @mousedown.prevent="saveEditorSelection" @click="openInlineImagePicker">{{ inlineImageUploading ? 'Đang tải ảnh…' : '＋ Ảnh + ALT' }}</button>
             </div>
             <div
