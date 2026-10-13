@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 
 interface BlogPost {
   id: number
+  slug?: string
   title: string
   img: string | null
   description: string
@@ -20,9 +21,21 @@ const loading = ref(false)
 const relatedLoading = ref(false)
 const errorMessage = ref('')
 
-const blogId = computed(() => {
-  const id = Number(route.params.id)
-  return Number.isInteger(id) && id > 0 ? id : null
+const blogIdentifier = computed(() => {
+  const value = route.params.slug ?? route.params.id
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return null
+  }
+
+  // Đường dẫn cũ /blogs/:id
+  if (route.params.id !== undefined) {
+    const id = Number(value)
+    return Number.isInteger(id) && id > 0 ? String(id) : null
+  }
+
+  // Đường dẫn mới /slug-bai-viet
+  return value
 })
 
 function imageUrl(path: string | null | undefined): string {
@@ -165,34 +178,42 @@ async function loadBlog() {
   blog.value = null
   relatedBlogs.value = []
   errorMessage.value = ''
-  document.title = 'Chi tiết bài viết | Duy Chân Dung'
 
-  if (blogId.value === null) {
+  const identifier = blogIdentifier.value
+
+  if (identifier === null) {
     errorMessage.value = 'Đường dẫn bài viết không hợp lệ.'
     return
   }
 
   loading.value = true
+
   try {
-    const response = await axios.get(`${API_URL}/blogs/${blogId.value}`)
+    const response = await axios.get(
+      `${API_URL}/blogs/${encodeURIComponent(identifier)}`,
+    )
+
     const result = extractBlog(response.data)
-    if (!result) throw new Error('Dữ liệu bài viết không đúng định dạng.')
+
+    if (!result) {
+      throw new Error('Dữ liệu bài viết không đúng định dạng.')
+    }
 
     blog.value = result
-    document.title = `${result.title} | Duy Chân Dung`
     void loadRelatedBlogs(result.id)
   } catch (error) {
     console.error('Không tải được chi tiết bài viết:', error)
-    errorMessage.value = axios.isAxiosError(error) && error.response?.status === 404
-      ? 'Không tìm thấy bài viết này.'
-      : 'Không tải được bài viết. Hãy kiểm tra kết nối Backend.'
+
+    errorMessage.value =
+      axios.isAxiosError(error) && error.response?.status === 404
+        ? 'Không tìm thấy bài viết này.'
+        : 'Không tải được bài viết. Hãy kiểm tra kết nối Backend.'
   } finally {
     loading.value = false
   }
 }
-
 onMounted(loadBlog)
-watch(blogId, () => { void loadBlog() })
+watch(blogIdentifier, () => { void loadBlog() })
 </script>
 
 <template>
@@ -271,7 +292,7 @@ watch(blogId, () => { void loadBlog() })
           <router-link
             v-for="item in relatedBlogs"
             :key="item.id"
-            :to="`/blogs/${item.id}`"
+            :to="item.slug ? '/' + item.slug : { name: 'blog-detail', params: { id: item.id } }"
             class="blog-related-card"
           >
             <div class="blog-related-image">

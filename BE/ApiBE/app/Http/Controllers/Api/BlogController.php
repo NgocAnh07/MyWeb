@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Blog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class BlogController extends Controller
 {
@@ -18,10 +19,18 @@ class BlogController extends Controller
         return response()->json(Blog::latest()->paginate(12));
     }
 
-    public function show(Blog $blog)
-    {
-        return response()->json($blog);
+    public function show(string $identifier)
+{
+    if (ctype_digit($identifier)) {
+        // Tương thích với URL API cũ dùng ID.
+        $blog = Blog::findOrFail((int) $identifier);
+    } else {
+        // URL mới: tìm bài viết bằng slug có sẵn trong database.
+        $blog = Blog::where('slug', $identifier)->firstOrFail();
     }
+
+    return response()->json($blog);
+}
 
     public function uploadContentImage(Request $request)
     {
@@ -48,10 +57,23 @@ class BlogController extends Controller
         $data['description'] = $this->sanitizeBlogHtml($data['description']);
 
         if ($request->hasFile('img')) {
-            $data['img'] = $request->file('img')->store('blogs', 'public');
-        }
+    $data['img'] = $request->file('img')->store('blogs', 'public');
+}
 
-        $blog = Blog::create($data);
+// Tạo slug từ tiêu đề, không nối ID
+$baseSlug = Str::slug($data['title']) ?: 'blog';
+$slug = $baseSlug;
+$suffix = 2;
+
+// Nếu slug đã tồn tại thì thêm số thứ tự để tránh trùng
+while (Blog::where('slug', $slug)->exists()) {
+    $slug = $baseSlug . '-' . $suffix;
+    $suffix++;
+}
+
+$data['slug'] = $slug;
+
+$blog = Blog::create($data);
 
         return response()->json([
             'message' => 'Thêm bài viết thành công',
@@ -59,35 +81,59 @@ class BlogController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, Blog $blog)
-    {
-        $data = $request->validate([
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'sometimes|required|string',
-            'img' => 'sometimes|nullable|image|max:5120',
-        ]);
+public function update(Request $request, Blog $blog)
+{
+    $data = $request->validate([
+        'title' => 'sometimes|required|string|max:255',
+        'description' => 'sometimes|required|string',
+        'img' => 'sometimes|nullable|image|max:5120',
+    ]);
 
-        if (array_key_exists('description', $data)) {
-            $data['description'] = $this->sanitizeBlogHtml($data['description']);
-        }
-
-        if ($request->hasFile('img')) {
-            $oldImage = $blog->img;
-            $newImage = $request->file('img')->store('blogs', 'public');
-            $data['img'] = $newImage;
-
-            if ($oldImage && $oldImage !== $newImage) {
-                Storage::disk('public')->delete($oldImage);
-            }
-        }
-
-        $blog->update($data);
-
-        return response()->json([
-            'message' => 'Cập nhật bài viết thành công',
-            'blog' => $blog->fresh(),
-        ]);
+    // Làm sạch nội dung bài viết
+    if (array_key_exists('description', $data)) {
+        $data['description'] = $this->sanitizeBlogHtml(
+            $data['description']
+        );
     }
+
+    // Chỉ tạo slug mới khi tiêu đề được cập nhật
+    if (array_key_exists('title', $data)) {
+        $baseSlug = Str::slug($data['title']) ?: 'blog';
+        $slug = $baseSlug;
+        $suffix = 2;
+
+        // Tránh trùng slug với bài viết khác
+        while (
+            Blog::where('slug', $slug)
+                ->where('id', '!=', $blog->id)
+                ->exists()
+        ) {
+            $slug = $baseSlug . '-' . $suffix;
+            $suffix++;
+        }
+
+        $data['slug'] = $slug;
+    }
+
+    // Cập nhật ảnh nếu có ảnh mới
+    if ($request->hasFile('img')) {
+        $oldImage = $blog->img;
+        $newImage = $request->file('img')->store('blogs', 'public');
+
+        $data['img'] = $newImage;
+
+        if ($oldImage && $oldImage !== $newImage) {
+            Storage::disk('public')->delete($oldImage);
+        }
+    }
+
+    $blog->update($data);
+
+    return response()->json([
+        'message' => 'Cập nhật bài viết thành công',
+        'blog' => $blog->fresh(),
+    ]);
+}
 
     public function destroy(Blog $blog)
     {

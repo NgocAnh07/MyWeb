@@ -16,7 +16,7 @@ Route::get('/products/{identifier}', [ProductController::class, 'show']);
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
 Route::get('/blogs', [BlogController::class, 'index']);
-Route::get('/blogs/{blog}', [BlogController::class, 'show']);
+Route::get('/blogs/{identifier}', [BlogController::class, 'show']);
 
 // API yêu cầu đăng nhập.
 Route::middleware('auth:sanctum')->group(function () {

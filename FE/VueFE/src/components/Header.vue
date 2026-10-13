@@ -378,12 +378,13 @@ onBeforeUnmount(() => {
             </form>
 
             <!-- Gọi điện -->
-            <a href="#contact" class="btn-primary text-base py-3.5 px-7">
-            <i data-lucide="calendar-plus" class="w-5 h-5"></i>
-            
-          
-              034 969 1818
-            </a>
+            <a
+  href="tel:0349691818"
+  class="btn-primary header-phone-cta text-base py-3.5 px-7"
+>
+  <i data-lucide="calendar-plus" class="w-5 h-5"></i>
+  034 969 1818
+</a>
 
             <!-- Đăng nhập -->
             <router-link
@@ -717,5 +718,32 @@ onBeforeUnmount(() => {
   left: 0;
   width: 100%;
   max-width: 100%;
+}
+/* Thu nhỏ nút gọi điện trên mobile */
+@media (max-width: 767px) {
+  .header-phone-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+
+    width: auto;
+    min-width: 0;
+    max-width: 155px;
+    padding: 8px 10px !important;
+
+    font-size: 12px !important;
+    line-height: 1.3;
+    white-space: nowrap;
+    flex-shrink: 1;
+    border-radius: 10px;
+  }
+
+  .header-phone-cta svg,
+  .header-phone-cta i {
+    width: 16px !important;
+    height: 16px !important;
+    flex-shrink: 0;
+  }
 }
 </style>

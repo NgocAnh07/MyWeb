@@ -12,6 +12,7 @@ import BlogAdmin from '../view/BlogAdmin.vue'
 import SearchProduct from '../view/SearchProduct.vue'
 import ProductDetail from '../view/ProductDetail.vue'
 import BlogDetail from '../view/BlogDetail.vue'
+import SlugDetail from '../view/SlugDetail.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -92,7 +93,7 @@ const router = createRouter({
     {
   path: '/:slug',
   name: 'product-detail',
-  component: ProductDetail,
+  component: SlugDetail,
 }
   ],
 })

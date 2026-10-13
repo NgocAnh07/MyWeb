@@ -25,6 +25,7 @@ const featuredError = ref('')
 
 interface BlogPost {
   id: number
+  slug?: string
   title: string
   img: string | null
   description: string
@@ -555,7 +556,7 @@ onMounted(async () => {
     
 <!-- Danh sách sản phẩm và nút Xem thêm -->
 <template v-else-if="featuredProducts.length > 0">
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+  <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
     <router-link
   v-for="(product, index) in featuredProducts"
   :key="product.id"
@@ -655,7 +656,7 @@ onMounted(async () => {
 <router-link
   v-for="(blog, index) in randomBlogs"
   :key="blog.id"
-  :to="{ name: 'blog-detail', params: { id: blog.id } }"
+  :to="blog.slug ? '/' + blog.slug : { name: 'blog-detail', params: { id: blog.id } }"
   class="blog-card-link"
 >
   <article
@@ -939,7 +940,7 @@ onMounted(async () => {
 @media (max-width: 480px) {
   .featured-product-card {
     height: auto;
-    padding: 15px;
+    padding: 8px;
     border-radius: 24px;
   }
 
