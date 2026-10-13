@@ -427,7 +427,7 @@ onMounted(async () => {
           </h3>
           
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
-          <a href="heart-health.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -442,7 +442,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh phong cảnh</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện trọn vẹn những khung cảnh diễm lệ nhất của thế giới vào trong kiệt tác</p>
-          <a href="ECG-diagnostics.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -458,7 +458,7 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh ghép mặt
           </h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện bản thân vào khung cảnh lịch sử hoặc nhân vật lịch sử</p>
-          <a href="hypertension-management.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -473,7 +473,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ hoa quả</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Lớp màu sơn dầu khắc họa vẻ đẹp mọng nước, tràn đầy sức sống của cỏ cây</p>
-          <a href="cardiac-rehabilitation.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -488,7 +488,7 @@ onMounted(async () => {
           </div>
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ hoa</h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Đôi bàn tay tài hoa đã thổi nhịp sống vào nét vẽ, làm bừng sáng không gian bằng sắc hoa không bao giờ phai tàn</p>
-          <a href="preventive-cardiology.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
 
@@ -504,7 +504,7 @@ onMounted(async () => {
           <h3 class="font-heading font-semibold text-lg text-slate-800 dark:text-white mb-2">Tranh vẽ Bác Hồ
           </h3>
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Bằng ngôn ngữ hội họa tinh tế, người nghệ sĩ đã khắc nét nên hình ảnh Cha già dân tộc vừa thanh cao, vừa vô cùng gần gũi</p>
-          <a href="Emergency.html"
+          <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">xem thêm
             <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
         </div>
