@@ -554,7 +554,7 @@ onMounted(async () => {
     
 <!-- Danh sách sản phẩm và nút Xem thêm -->
 <template v-else-if="featuredProducts.length > 0">
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
     <router-link
   v-for="(product, index) in featuredProducts"
   :key="product.id"
@@ -780,15 +780,16 @@ onMounted(async () => {
 </template>
 <style scoped>
 .featured-product-card {
-  display: grid;
-  grid-template-rows: minmax(0, 4fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  height: 300px;
+  height: auto;
   min-width: 0;
-  padding: 18px 18px 8px;
+  padding: 18px;
+  gap: 12px;
   overflow: hidden;
   border: 0;
-  border-radius: 38px;
+  border-radius: 28px;
   background: #cbd5df;
   box-shadow: 0 5px 18px rgb(0 0 0 / 10%);
   transition:
@@ -802,17 +803,14 @@ onMounted(async () => {
 }
 
 .featured-product-image {
-  display: flex;
   width: 100%;
+  aspect-ratio: 4 / 3;
   min-width: 0;
-  min-height: 0;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 20px;
   background: #000;
 }
-
 .featured-product-image img {
   display: block;
   width: 100%;
@@ -834,30 +832,30 @@ onMounted(async () => {
   color: #d1d5db;
   font-size: 13px;
 }
-
 .featured-product-name {
   display: flex;
+  width: 100%;
   min-width: 0;
-  min-height: 0;
   align-items: center;
   justify-content: center;
-  padding: 8px 10px;
+  padding: 4px 8px 8px;
   text-align: center;
 }
 
 .featured-product-name h3 {
-  display: -webkit-box;
+  display: block;
+  width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  margin: 0;
+  overflow: visible;
   color: #000;
   font-size: 20px;
   font-weight: 800;
-  line-height: 1.3;
+  line-height: 1.4;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  white-space: normal;
 }
+
 .blog-description {
   display: -webkit-box;
   overflow: hidden;
@@ -937,13 +935,13 @@ onMounted(async () => {
 }
 @media (max-width: 480px) {
   .featured-product-card {
-    height: 270px;
-    padding: 15px 15px 7px;
-    border-radius: 30px;
+    height: auto;
+    padding: 15px;
+    border-radius: 24px;
   }
 
   .featured-product-image {
-    border-radius: 20px;
+    border-radius: 18px;
   }
 
   .featured-product-name h3 {
