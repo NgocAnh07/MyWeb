@@ -299,9 +299,14 @@ onBeforeUnmount(() => {
               class="nav-link text-base font-medium"
             >Giới thiệu</router-link>
             <router-link
-              :to="{ path: '/', hash: '#products' }"
+              :to="{ path: '/search-products' }"
               class="nav-link text-base font-medium"
             >Danh mục</router-link>
+            <router-link
+            
+              :to="{ path: '/', hash: '#products' }"
+              class="nav-link text-base font-medium"
+            >Sản phẩm</router-link>
             <router-link
               :to="{ path: '/', hash: '#blog' }"
               class="nav-link text-base font-medium"
@@ -510,10 +515,15 @@ onBeforeUnmount(() => {
             @click="closeMobileMenu"
           >Giới thiệu</router-link>
           <router-link
+              :to="{ path: '/search-products' }"
+              class="nav-link text-slate-200 py-2.5 text-sm"
+              @click="closeMobileMenu"
+            >Danh mục</router-link>
+          <router-link
             :to="{ path: '/', hash: '#products' }"
             class="nav-link text-slate-200 py-2.5 text-sm"
             @click="closeMobileMenu"
-          >Danh mục</router-link>
+          >Sản phẩm</router-link>
           <router-link
             :to="{ path: '/', hash: '#blog' }"
             class="nav-link text-slate-200 py-2.5 text-sm"

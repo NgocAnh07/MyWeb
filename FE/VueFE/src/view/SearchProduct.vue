@@ -231,31 +231,46 @@ onMounted(loadProductsAndCategories)
             </div>
           </div>
 
-          <button
-            type="button"
-            class="category-filter"
-            :class="{ 'category-filter-active': selectedCategoryId === null }"
-            @click="setCategory(null)"
-          >
-            <span class="category-filter-name"><span class="category-dot all-dot"></span>Tất cả sản phẩm</span>
-            <span class="category-count">{{ products.length }}</span>
-          </button>
+          
+<div class="category-list-scroll">
+  <button
+    type="button"
+    class="category-filter"
+    :class="{ 'category-filter-active': selectedCategoryId === null }"
+    @click="setCategory(null)"
+  >
+    <span class="category-filter-name">
+      <span class="category-dot all-dot"></span>
+      Tất cả sản phẩm
+    </span>
+    <span class="category-count">{{ products.length }}</span>
+  </button>
 
-          <button
-            v-for="category in categories"
-            :key="category.id"
-            type="button"
-            class="category-filter"
-            :class="{ 'category-filter-active': selectedCategoryId === category.id }"
-            @click="setCategory(category.id)"
-          >
-            <span class="category-filter-name"><span class="category-dot"></span>{{ category.name }}</span>
-            <span class="category-count">{{ categoryCounts.get(category.id) ?? 0 }}</span>
-          </button>
+  <button
+    v-for="category in categories"
+    :key="category.id"
+    type="button"
+    class="category-filter"
+    :class="{ 'category-filter-active': selectedCategoryId === category.id }"
+    @click="setCategory(category.id)"
+  >
+    <span class="category-filter-name">
+      <span class="category-dot"></span>
+      {{ category.name }}
+    </span>
+    <span class="category-count">
+      {{ categoryCounts.get(category.id) ?? 0 }}
+    </span>
+  </button>
 
-          <div v-if="categories.length === 0 && !loading" class="category-hint">
-            Chưa có danh mục hoặc không tải được danh mục.
-          </div>
+  <div
+    v-if="categories.length === 0 && !loading"
+    class="category-hint"
+  >
+    Chưa có danh mục hoặc không tải được danh mục.
+  </div>
+</div>
+
         </aside>
 
         <div class="products-area">
@@ -458,4 +473,46 @@ onMounted(loadProductsAndCategories)
   .product-grid { grid-template-columns: minmax(0, 1fr); }
   .search-product-image { height: 240px; }
 }
+
+/* Vùng cuộn danh mục độc lập */
+.category-list-scroll {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 5px;
+}
+
+/* Thanh cuộn danh mục */
+.category-list-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.category-list-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.category-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.category-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Trên điện thoại: danh mục vẫn cuộn độc lập */
+@media (max-width: 760px) {
+  .category-list-scroll {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 5px;
+    width: 100%;
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+
 </style>
