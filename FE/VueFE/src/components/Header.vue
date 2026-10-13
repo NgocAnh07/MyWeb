@@ -384,7 +384,7 @@ onBeforeUnmount(() => {
 
             <!-- Gọi điện -->
             <a
-  href="tel:0349691818"
+  href="#"
   class="btn-primary header-phone-cta text-base py-3.5 px-7"
 >
   <i data-lucide="calendar-plus" class="w-5 h-5"></i>
@@ -534,11 +534,7 @@ onBeforeUnmount(() => {
             class="nav-link text-slate-200 py-2.5 text-sm"
             @click="closeMobileMenu"
           >Liên hệ</router-link>
-          <a
-            href="tel:0349691818"
-            class="btn-primary mt-3 w-full justify-center"
-            @click="closeMobileMenu"
-          >Gọi 034 969 1818</a>
+          
         </div>
       </div>
     </nav>
