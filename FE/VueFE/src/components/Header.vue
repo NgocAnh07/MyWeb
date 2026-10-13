@@ -10,6 +10,7 @@ const mobileMenuOpen = ref(false)
 
 interface SearchProduct {
   id: number
+  slug?: string
   name: string
   description?: string | null
   img?: string | null
@@ -193,12 +194,25 @@ function submitSearch() {
   })
 }
 
+
 function openSuggestedProduct(product: SearchProduct) {
   searchSuggestionsOpen.value = false
   searchQuery.value = ''
   closeMobileMenu()
-  router.push(`/products/${product.id}`)
+
+  if (product.slug) {
+    router.push({
+      name: 'product-detail',
+      params: { slug: product.slug },
+    })
+  } else {
+    router.push({
+      name: 'product-detail-legacy',
+      params: { id: product.id },
+    })
+  }
 }
+
 
 // Đồng bộ trạng thái đăng nhập từ localStorage.
 function syncAuthState() {

@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-
+use Illuminate\Support\Str;
 class ProductController extends Controller
 {
     // Lấy danh sách sản phẩm kèm danh mục.
@@ -20,12 +20,23 @@ class ProductController extends Controller
     }
 
     // Lấy chi tiết sản phẩm kèm danh mục.
-    public function show(Product $product)
-    {
-        $product->load('category');
 
-        return response()->json($product);
+public function show(string $product)
+{
+    if (ctype_digit($product)) {
+        // URL cũ: tìm sản phẩm bằng ID.
+        $item = Product::with('category')
+            ->findOrFail((int) $product);
+    } else {
+        // URL mới: tìm sản phẩm bằng slug.
+        $item = Product::with('category')
+            ->where('slug', $product)
+            ->firstOrFail();
     }
+
+    return response()->json($item);
+}
+
 
     // Thêm sản phẩm.
     public function store(Request $request)
@@ -36,6 +47,7 @@ class ProductController extends Controller
             'category_id' => 'required|integer|exists:categories,id',
             'img' => 'required|image|max:5120',
         ]);
+        $data['slug'] = $this->makeUniqueSlug($data['name']);
 
         // Chỉ lưu HTML đã được lọc an toàn.
         $data['description'] = $this->sanitizeProductHtml(
@@ -67,6 +79,16 @@ class ProductController extends Controller
             // Không bắt buộc chọn ảnh mới khi sửa sản phẩm.
             'img' => 'sometimes|nullable|image|max:5120',
         ]);
+        // Chỉ tạo slug mới khi tên sản phẩm thực sự thay đổi.
+if (
+    isset($data['name']) &&
+    $data['name'] !== $product->name
+) {
+    $data['slug'] = $this->makeUniqueSlug(
+        $data['name'],
+        $product->id
+    );
+}
 
         if (array_key_exists('description', $data)) {
             $data['description'] = $this->sanitizeProductHtml(
@@ -301,4 +323,33 @@ class ProductController extends Controller
             'UTF-8'
         );
     }
+    private function makeUniqueSlug(
+    string $name,
+    ?int $ignoreId = null
+): string {
+    $baseSlug = Str::slug($name);
+
+    if ($baseSlug === '') {
+        $baseSlug = 'san-pham';
+    }
+
+    // Giới hạn độ dài để URL gọn và phù hợp cột slug.
+    $baseSlug = Str::limit($baseSlug, 150, '');
+    $slug = $baseSlug;
+    $suffix = 2;
+
+    while (
+        Product::where('slug', $slug)
+            ->when(
+                $ignoreId !== null,
+                fn ($query) => $query->where('id', '!=', $ignoreId)
+            )
+            ->exists()
+    ) {
+        $slug = $baseSlug . '-' . $suffix;
+        $suffix++;
+    }
+
+    return $slug;
+}
 }

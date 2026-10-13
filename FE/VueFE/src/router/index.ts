@@ -81,7 +81,7 @@ const router = createRouter({
     },
     {
       path: '/products/:id',
-      name: 'product-detail',
+      name: 'product-detail-legacy',
       component: ProductDetail,
     },
     {
@@ -89,6 +89,11 @@ const router = createRouter({
       name: 'blog-detail',
       component: BlogDetail,
     },
+    {
+  path: '/:slug',
+  name: 'product-detail',
+  component: ProductDetail,
+}
   ],
 })
 

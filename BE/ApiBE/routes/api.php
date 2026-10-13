@@ -12,7 +12,7 @@ Route::post('/login', [AuthController::class, 'login']);
 
 // API công khai: khách có thể xem tranh, danh mục và bài viết.
 Route::get('/products', [ProductController::class, 'index']);
-Route::get('/products/{product}', [ProductController::class, 'show']);
+Route::get('/products/{identifier}', [ProductController::class, 'show']);
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
 Route::get('/blogs', [BlogController::class, 'index']);

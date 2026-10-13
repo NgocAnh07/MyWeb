@@ -12,6 +12,7 @@ interface Category {
 
 interface Product {
   id: number
+  slug?: string
   name: string
   description: string
   img: string | null
@@ -109,9 +110,20 @@ const activePointers = new Map<number, { x: number; y: number }>()
 let pinchStartDistance = 0
 let pinchStartZoom = 1
 
-const productId = computed(() => {
-  const value = Number(route.params.id)
-  return Number.isInteger(value) && value > 0 ? value : null
+const productIdentifier = computed(() => {
+  const value = route.params.slug ?? route.params.id
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return null
+  }
+
+  // URL cũ /products/:id phải có ID là số nguyên dương.
+  if (route.params.id !== undefined) {
+    const id = Number(value)
+    return Number.isInteger(id) && id > 0 ? String(id) : null
+  }
+
+  return value
 })
 
 function imageUrl(path: string | null | undefined): string {
@@ -206,7 +218,7 @@ async function loadProduct() {
   descriptionExpanded.value = false
   relatedProducts.value = []
 
-  if (productId.value === null) {
+  if (productIdentifier.value === null) {
     product.value = null
     errorMessage.value = 'Đường dẫn sản phẩm không hợp lệ.'
     return
@@ -218,9 +230,9 @@ async function loadProduct() {
 
   try {
     const [productResult, categoryResult] = await Promise.allSettled([
-      axios.get(`${API_URL}/products/${productId.value}`),
-      axios.get(`${API_URL}/categories`),
-    ])
+  axios.get(`${API_URL}/products/${encodeURIComponent(productIdentifier.value!)}`),
+  axios.get(`${API_URL}/categories`),
+])
 
     if (productResult.status !== 'fulfilled') {
       throw productResult.reason
@@ -417,7 +429,7 @@ function goBack() {
   }
 }
 
-watch(productId, loadProduct)
+watch(productIdentifier, loadProduct)
 onMounted(() => {
   window.addEventListener('keydown', handleViewerKeydown)
   loadProduct()
@@ -516,7 +528,9 @@ onBeforeUnmount(() => {
           <router-link
             v-for="item in relatedProducts"
             :key="item.id"
-            :to="`/products/${item.id}`"
+            :to="item.slug
+  ? { name: 'product-detail', params: { slug: item.slug } }
+  : { name: 'product-detail-legacy', params: { id: item.id } }"
             class="related-product-card"
             :aria-label="`Xem chi tiết ${item.name}`"
           >

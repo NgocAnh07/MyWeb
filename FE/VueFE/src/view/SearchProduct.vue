@@ -14,6 +14,7 @@ interface Category {
 
 interface Product {
   id: number
+   slug?: string
   name: string
   description: string
   img: string | null
@@ -285,7 +286,9 @@ onMounted(loadProductsAndCategories)
               <router-link
                 v-for="product in paginatedProducts"
                 :key="product.id"
-                :to="`/products/${product.id}`"
+                :to="product.slug
+  ? { name: 'product-detail', params: { slug: product.slug } }
+  : { name: 'product-detail-legacy', params: { id: product.id } }"
                 class="search-product-card"
                 :aria-label="`Xem chi tiết ${product.name}`"
               >

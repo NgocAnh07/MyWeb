@@ -12,6 +12,7 @@ interface FeaturedCategory {
 
 interface FeaturedProduct {
   id: number
+   slug?: string
   name: string
   img: string | null
   category_id?: number | null
@@ -558,7 +559,9 @@ onMounted(async () => {
     <router-link
   v-for="(product, index) in featuredProducts"
   :key="product.id"
-  :to="{ name: 'product-detail', params: { id: product.id } }"
+  :to="product.slug
+  ? { name: 'product-detail', params: { slug: product.slug } }
+  : { name: 'product-detail-legacy', params: { id: product.id } }"
   class="featured-product-card"
   data-aos="zoom-in"
   :data-aos-delay="index * 80"
