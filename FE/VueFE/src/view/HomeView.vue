@@ -852,14 +852,18 @@ onMounted(async () => {
   max-width: 100%;
   margin: 0;
   overflow: visible;
-  color: #000;
+
+  /* Font hỗ trợ đầy đủ tiếng Việt */
+  font-family: Arial, "Segoe UI", Tahoma, sans-serif !important;
   font-size: 20px;
-  font-weight: 800;
-  line-height: 1.4;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1.5;
+
+  color: #000;
   overflow-wrap: anywhere;
   white-space: normal;
 }
-
 .blog-description {
   display: -webkit-box;
   overflow: hidden;

@@ -170,6 +170,25 @@ function setCategory(categoryId: number | null) {
 function formatCount(value: number): string {
   return new Intl.NumberFormat('vi-VN').format(value)
 }
+function plainDescription(value: string | null | undefined): string {
+  if (!value) return ''
+
+  let text = value
+
+  // Loại bỏ thẻ HTML và giải mã các ký tự HTML
+  for (let i = 0; i < 2; i++) {
+    const doc = new DOMParser().parseFromString(text, 'text/html')
+    const nextText = doc.body.textContent ?? ''
+
+    if (nextText === text) break
+    text = nextText
+  }
+
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 async function loadProductsAndCategories() {
   loading.value = true
@@ -314,7 +333,7 @@ onMounted(loadProductsAndCategories)
                 <div class="search-product-info">
                   <span class="search-product-category">{{ categoryName(product) }}</span>
                   <h3>{{ product.name }}</h3>
-                  <p>{{ product.description }}</p>
+                  <p>{{ plainDescription(product.description) }}</p>
                   <span class="search-product-details-link">Xem chi tiết <span aria-hidden="true">→</span></span>
                 </div>
               </router-link>
