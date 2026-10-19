@@ -55,9 +55,11 @@ public function show(string $product)
         );
 
         if ($request->hasFile('img')) {
-            $data['img'] = $request->file('img')
-                ->store('products', 'public');
-        }
+    $data['img'] = $this->saveProductImage(
+        $request->file('img'),
+        $data['name']
+    );
+}
 
         $product = Product::create($data);
         $product->load('category');
@@ -97,18 +99,55 @@ if (
         }
 
         if ($request->hasFile('img')) {
-            $newImage = $request->file('img')
-                ->store('products', 'public');
+    // Có chọn ảnh mới: lưu ảnh theo tên sản phẩm
+    $oldImage = $product->img;
 
-            // Chỉ xóa ảnh cũ sau khi ảnh mới đã lưu thành công.
-            $oldImage = $product->img;
+    $newImage = $this->saveProductImage(
+        $request->file('img'),
+        $data['name'] ?? $product->name,
+        $oldImage
+    );
 
-            $data['img'] = $newImage;
+    $data['img'] = $newImage;
 
-            if ($oldImage && $oldImage !== $newImage) {
-                Storage::disk('public')->delete($oldImage);
-            }
-        }
+    // Xóa ảnh cũ nếu đường dẫn đã thay đổi
+    if ($oldImage && $oldImage !== $newImage) {
+        Storage::disk('public')->delete($oldImage);
+    }
+} elseif (
+    $product->img &&
+    Storage::disk('public')->exists($product->img)
+) {
+    // Không chọn ảnh mới: đổi tên file ảnh hiện tại
+    $oldImage = $product->img;
+    $productName = $data['name'] ?? $product->name;
+
+    $baseName = Str::slug($productName) ?: 'product';
+    $extension = pathinfo($oldImage, PATHINFO_EXTENSION) ?: 'jpg';
+
+    $disk = Storage::disk('public');
+    $filename = "{$baseName}.{$extension}";
+    $newImage = "products/{$filename}";
+    $counter = 2;
+
+    // Tránh ghi đè ảnh của sản phẩm khác
+    while (
+        $disk->exists($newImage) &&
+        $newImage !== $oldImage
+    ) {
+        $filename = "{$baseName}-{$counter}.{$extension}";
+        $newImage = "products/{$filename}";
+        $counter++;
+    }
+
+    // Chỉ đổi tên file khi đường dẫn thực sự thay đổi
+    if (
+        $newImage !== $oldImage &&
+        $disk->move($oldImage, $newImage)
+    ) {
+        $data['img'] = $newImage;
+    }
+}
 
         $product->update($data);
         $product->load('category');
@@ -351,5 +390,27 @@ if (
     }
 
     return $slug;
+}
+private function saveProductImage(
+    \Illuminate\Http\UploadedFile $file,
+    string $productName,
+    ?string $currentPath = null
+): string {
+    $baseName = Str::slug($productName) ?: 'product';
+    $extension = $file->guessExtension() ?: 'jpg';
+
+    $filename = "{$baseName}.{$extension}";
+    $path = "products/{$filename}";
+    $counter = 2;
+    $disk = Storage::disk('public');
+
+    // Tránh ghi đè ảnh của sản phẩm khác.
+    while ($disk->exists($path) && $path !== $currentPath) {
+        $filename = "{$baseName}-{$counter}.{$extension}";
+        $path = "products/{$filename}";
+        $counter++;
+    }
+
+    return $file->storeAs('products', $filename, 'public');
 }
 }
