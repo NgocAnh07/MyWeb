@@ -6,10 +6,12 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\BlogController;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\SitemapController;
 
 // Đăng nhập
 Route::post('/login', [AuthController::class, 'login']);
-
+///sitemap
+Route::get('/sitemap.xml', [SitemapController::class, 'index']);
 // API công khai: khách có thể xem tranh, danh mục và bài viết.
 Route::get('/products', [ProductController::class, 'index']);
 Route::get('/products/{identifier}', [ProductController::class, 'show']);
