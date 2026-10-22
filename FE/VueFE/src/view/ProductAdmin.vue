@@ -17,6 +17,12 @@ interface Category {
 
 }
 
+interface ProductImage {
+  id: number
+  image: string
+  sort_order?: number
+}
+
 interface Product {
 
   id: number
@@ -30,6 +36,8 @@ interface Product {
   category_id?: number | null
 
   category?: Category
+
+  images?: ProductImage[]
 
 }
 
@@ -60,6 +68,9 @@ const selectedImage = ref<File | null>(null)
 const imagePreview = ref('')
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const additionalImagesInput = ref<HTMLInputElement | null>(null)
+const selectedAdditionalImages = ref<File[]>([])
+const additionalImagePreviews = ref<string[]>([])
 const editorRef = ref<HTMLDivElement | null>(null)
 const inlineImageInput = ref<HTMLInputElement | null>(null)
 const inlineImageUploading = ref(false)
@@ -338,15 +349,46 @@ async function loadProducts(page = currentPage.value) {
 }
 
 function clearImagePreview() {
-
   if (imagePreview.value.startsWith('blob:')) {
-
     URL.revokeObjectURL(imagePreview.value)
+  }
+  imagePreview.value = ''
+}
 
+function clearAdditionalImagePreviews() {
+  for (const preview of additionalImagePreviews.value) {
+    if (preview.startsWith('blob:')) URL.revokeObjectURL(preview)
+  }
+  additionalImagePreviews.value = []
+}
+
+function onAdditionalImagesChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+
+  if (files.length === 0) return
+  if (files.length > 3) {
+    errorMessage.value = 'Mỗi sản phẩm chỉ được chọn tối đa 3 ảnh phụ.'
+    return
   }
 
-  imagePreview.value = ''
+  const invalidFile = files.find(file => !file.type.startsWith('image/'))
+  if (invalidFile) {
+    errorMessage.value = 'Tất cả ảnh phụ phải là file ảnh hợp lệ.'
+    return
+  }
 
+  const oversizedFile = files.find(file => file.size > 5 * 1024 * 1024)
+  if (oversizedFile) {
+    errorMessage.value = 'Mỗi ảnh phụ không được vượt quá 5 MB.'
+    return
+  }
+
+  clearAdditionalImagePreviews()
+  selectedAdditionalImages.value = files
+  additionalImagePreviews.value = files.map(file => URL.createObjectURL(file))
+  errorMessage.value = ''
 }
 
 
@@ -596,59 +638,66 @@ async function onInlineImageSelected(event: Event) {
 
 
 async function openCreateModal() {
-
   editingId.value = null
-
-  form.value = {
-
-    name: '',
-
-    description: '',
-
-    category_id: '',
-
-  }
-
+  form.value = { name: '', description: '', category_id: '' }
   selectedImage.value = null
-
   clearImagePreview()
-
+  clearAdditionalImagePreviews()
+  selectedAdditionalImages.value = []
+  if (fileInput.value) fileInput.value.value = ''
+  if (additionalImagesInput.value) additionalImagesInput.value.value = ''
   errorMessage.value = ''
-
+  successMessage.value = ''
   showModal.value = true
   await applyEditorHtml('')
-
 }
 
 async function openEditModal(product: Product) {
-
-  editingId.value = product.id
-
-  form.value = {
-
-    name: product.name,
-
-    description: product.description ?? '',
-
-    category_id: String(
-
-      product.category_id ?? product.category?.id ?? '',
-
-    ),
-
+  // Danh sách sản phẩm chỉ cần ảnh chính; gọi API chi tiết để lấy cả ảnh phụ.
+  let detailedProduct = product
+  try {
+    const response = await axios.get(`${API_URL}/products/${product.id}`, getConfig())
+    const payload: unknown = response.data
+    let candidate: unknown = payload
+    if (typeof payload === 'object' && payload !== null && 'product' in payload) {
+      const wrappedProduct = (payload as { product?: unknown }).product
+      if (wrappedProduct && typeof wrappedProduct === 'object') {
+        candidate = wrappedProduct
+      }
+    }
+    if (
+      typeof candidate === 'object' &&
+      candidate !== null &&
+      'id' in candidate &&
+      candidate.id === product.id
+    ) {
+      detailedProduct = candidate as Product
+    }
+  } catch {
+    // Vẫn cho phép sửa thông tin sản phẩm nếu không tải được danh sách ảnh phụ.
   }
 
+  editingId.value = product.id
+  form.value = {
+    name: detailedProduct.name,
+    description: detailedProduct.description ?? '',
+    category_id: String(detailedProduct.category_id ?? detailedProduct.category?.id ?? ''),
+  }
   selectedImage.value = null
-
   clearImagePreview()
-
-  imagePreview.value = imageUrl(product.img)
-
+  imagePreview.value = imageUrl(detailedProduct.img)
+  clearAdditionalImagePreviews()
+  selectedAdditionalImages.value = []
+  if (fileInput.value) fileInput.value.value = ''
+  if (additionalImagesInput.value) additionalImagesInput.value.value = ''
+  additionalImagePreviews.value = (detailedProduct.images ?? [])
+    .slice(0, 3)
+    .map(item => imageUrl(item.image))
+    .filter(Boolean)
   errorMessage.value = ''
-
+  successMessage.value = ''
   showModal.value = true
-  await applyEditorHtml(product.description ?? '')
-
+  await applyEditorHtml(detailedProduct.description ?? '')
 }
 
 function closeModal() {
@@ -658,9 +707,11 @@ function closeModal() {
   showModal.value = false
 
   selectedImage.value = null
-
   clearImagePreview()
-
+  clearAdditionalImagePreviews()
+  selectedAdditionalImages.value = []
+  if (fileInput.value) fileInput.value.value = ''
+  if (additionalImagesInput.value) additionalImagesInput.value.value = ''
 }
 
 function onImageChange(event: Event) {
@@ -746,10 +797,14 @@ async function saveProduct() {
   body.append('category_id', form.value.category_id)
 
   if (selectedImage.value) {
-
     body.append('img', selectedImage.value)
-
   }
+
+  // Laravel nhận danh sách ảnh phụ qua trường images[]. Không gửi trường này
+  // khi sửa mà người dùng không chọn bộ ảnh mới để giữ nguyên ảnh cũ.
+  selectedAdditionalImages.value.forEach(file => {
+    body.append('images[]', file)
+  })
 
   saving.value = true
 
@@ -794,9 +849,11 @@ async function saveProduct() {
     showModal.value = false
 
     selectedImage.value = null
-
     clearImagePreview()
-
+    clearAdditionalImagePreviews()
+    selectedAdditionalImages.value = []
+    if (fileInput.value) fileInput.value.value = ''
+    if (additionalImagesInput.value) additionalImagesInput.value.value = ''
     await loadProducts(1)
 
   } catch (error: unknown) {
@@ -894,9 +951,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-
   clearImagePreview()
-
+  clearAdditionalImagePreviews()
 })
 
 </script>
@@ -965,15 +1021,15 @@ onBeforeUnmount(() => {
   Quản lý bài viết
 </router-link>
 
-<!-- Thay banner -->
-<router-link
-  to="/admin/banner"
-  class="product-nav-item"
-  active-class="product-nav-active"
->
-  <span class="product-nav-icon">🖼</span>
-  Thay banner
-</router-link>
+        <router-link
+          to="/admin/banner"
+          class="product-nav-item"
+          active-class="product-nav-active"
+        >
+          <span class="product-nav-icon">▧</span>
+          Thay banner
+        </router-link>
+
 
       </nav>
 
@@ -1470,6 +1526,35 @@ onBeforeUnmount(() => {
 
             <img :src="imagePreview" alt="Xem trước ảnh tranh" />
 
+          </div>
+
+          <div class="product-additional-images-field">
+            <label for="product-additional-images">Ảnh phụ (tối đa 3 ảnh)</label>
+            <input
+              id="product-additional-images"
+              ref="additionalImagesInput"
+              class="product-additional-images-input"
+              type="file"
+              accept="image/*"
+              multiple
+              @change="onAdditionalImagesChange"
+            />
+            <small>
+              Chọn tối đa 3 ảnh, mỗi ảnh tối đa 5 MB.
+              Khi sửa sản phẩm, nếu không chọn ảnh phụ mới thì ảnh phụ hiện tại được giữ nguyên.
+              Nếu chọn bộ ảnh mới, bộ ảnh phụ cũ sẽ được thay thế.
+            </small>
+
+            <div v-if="additionalImagePreviews.length" class="product-additional-preview-grid">
+              <div
+                v-for="(preview, index) in additionalImagePreviews"
+                :key="`${preview}-${index}`"
+                class="product-additional-preview-item"
+              >
+                <img :src="preview" :alt="`Ảnh phụ ${index + 1}`" />
+                <span>Ảnh phụ {{ index + 1 }}</span>
+              </div>
+            </div>
           </div>
 
           <p v-if="errorMessage" class="product-form-error">
@@ -2881,6 +2966,17 @@ cursor: pointer;
 }
 
 
+
+/* Ảnh phụ của sản phẩm */
+.product-additional-images-field { display: grid; gap: 8px; min-width: 0; }
+.product-additional-images-field > label { display: block; color: #435449; font-size: 11px; font-weight: 700; }
+.product-additional-images-input { width: 100%; padding: 10px; border: 1px dashed #d4e1d6; border-radius: 8px; background: #fafcfb; color: #59685e; font-size: 11px; }
+.product-additional-images-field > small { color: #879389; font-size: 10px; line-height: 1.65; }
+.product-additional-preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.product-additional-preview-item { min-width: 0; overflow: hidden; border: 1px solid #e1e9e2; border-radius: 8px; background: #fafcfb; text-align: center; }
+.product-additional-preview-item img { display: block; width: 100%; height: 110px; object-fit: contain; background: #f3f6f3; }
+.product-additional-preview-item span { display: block; padding: 7px 4px; color: #647267; font-size: 10px; }
+@media (max-width: 480px) { .product-additional-preview-grid { gap: 6px; } .product-additional-preview-item img { height: 82px; } }
 
 /* Rich text editor cho mô tả sản phẩm */
 .product-editor-field { display: grid; gap: 8px; min-width: 0; }

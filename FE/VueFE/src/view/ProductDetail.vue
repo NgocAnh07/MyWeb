@@ -31,6 +31,11 @@ const isDescriptionLong = ref(false)
 const relatedProducts = ref<Product[]>([])
 const relatedLoading = ref(false)
 
+// Bộ ảnh riêng cho trang chi tiết: ảnh chính lấy đúng từ product.img,
+// ảnh phụ được tìm theo tên file cùng gốc với hậu tố -1, -2, -3.
+const selectedGalleryIndex = ref(0)
+const failedGalleryImages = ref<Set<number>>(new Set())
+
 function safeDescriptionHtml(value: string): string {
   const raw = value.trim()
   if (!raw) return ''
@@ -135,6 +140,73 @@ function imageUrl(path: string | null | undefined): string {
     : `${STORAGE_BASE_URL}/storage/${normalized}`
 }
 
+function alternateImagePath(path: string, index: number): string {
+  // Giữ nguyên thư mục, phần mở rộng và query string (nếu có).
+  if (/^https?:\/\//i.test(path)) {
+    try {
+      const url = new URL(path)
+      const pathname = url.pathname
+      url.pathname = /\.[^./]+$/.test(pathname)
+        ? pathname.replace(/(\.[^./]+)$/i, `-${index}$1`)
+        : `${pathname}-${index}.jpg`
+      return url.toString()
+    } catch {
+      return path
+    }
+  }
+
+  const match = path.match(/^([^?#]*)([?#].*)?$/)
+  const pathname = match?.[1] ?? path
+  const suffix = match?.[2] ?? ''
+  const alternate = /\.[^./]+$/i.test(pathname)
+    ? pathname.replace(/(\.[^./]+)$/i, `-${index}$1`)
+    : `${pathname}-${index}.jpg`
+  return `${alternate}${suffix}`
+}
+
+const galleryImages = computed(() => {
+  const current = product.value
+  if (!current?.img) return []
+
+  return [
+    {
+      index: 0,
+      src: imageUrl(current.img),
+      alt: current.name,
+      label: 'Ảnh chính',
+    },
+    ...[1, 2, 3].map(index => ({
+      index,
+      src: imageUrl(alternateImagePath(current.img as string, index)),
+      alt: `${current.name} - ảnh phụ ${index}`,
+      label: `Ảnh phụ ${index}`,
+    })),
+  ]
+})
+
+const selectedGalleryImage = computed(() =>
+  galleryImages.value.find(image => image.index === selectedGalleryIndex.value)
+    ?? galleryImages.value[0]
+    ?? null,
+)
+
+function markGalleryImageFailed(index: number) {
+  const updated = new Set(failedGalleryImages.value)
+  updated.add(index)
+  failedGalleryImages.value = updated
+
+  // Nếu ảnh phụ không tồn tại, quay về ảnh chính thay vì để khung lớn bị trống.
+  if (selectedGalleryIndex.value === index && index !== 0) {
+    selectedGalleryIndex.value = 0
+  }
+}
+
+function selectGalleryImage(index: number) {
+  if (failedGalleryImages.value.has(index)) return
+  selectedGalleryIndex.value = index
+  resetImageZoom()
+}
+
 function getCategoryName(item: Product): string {
   if (item.category?.name) return item.category.name
   const categoryId = item.category_id
@@ -215,6 +287,8 @@ function extractProduct(payload: unknown): Product | null {
 
 async function loadProduct() {
   closeImageViewer()
+  selectedGalleryIndex.value = 0
+  failedGalleryImages.value = new Set()
   descriptionExpanded.value = false
   relatedProducts.value = []
 
@@ -267,7 +341,7 @@ async function loadProduct() {
 }
 
 function openImageViewer() {
-  if (!product.value?.img) return
+  if (!selectedGalleryImage.value?.src || failedGalleryImages.value.has(selectedGalleryImage.value.index)) return
   imageViewerOpen.value = true
   resetImageZoom()
 }
@@ -463,21 +537,50 @@ onBeforeUnmount(() => {
 
       <div v-else-if="product" class="detail-layout">
         <div class="detail-image-panel">
-          <button
-            v-if="product.img"
-            type="button"
-            class="detail-image-trigger"
-            :aria-label="`Phóng to ảnh ${product.name}`"
-            title="Bấm để phóng to ảnh"
-            @click="openImageViewer"
-          >
-            <img
-              :src="imageUrl(product.img)"
-              :alt="product.name"
-              class="detail-image"
-            />
-            <span class="detail-image-hint">⌕ Bấm để xem ảnh lớn</span>
-          </button>
+          <div v-if="galleryImages.length" class="detail-gallery">
+            <button
+              v-if="selectedGalleryImage && !failedGalleryImages.has(selectedGalleryImage.index)"
+              type="button"
+              class="detail-image-trigger"
+              :aria-label="`Phóng to ${selectedGalleryImage.alt}`"
+              title="Bấm để phóng to ảnh"
+              @click="openImageViewer"
+            >
+              <img
+                :src="selectedGalleryImage.src"
+                :alt="selectedGalleryImage.alt"
+                class="detail-image"
+                @error="markGalleryImageFailed(selectedGalleryImage.index)"
+              />
+              <span class="detail-image-hint">⌕ Bấm để xem ảnh lớn</span>
+            </button>
+            <div v-else class="detail-no-image">Tác phẩm chưa có ảnh</div>
+
+            <div class="detail-gallery-thumbnails" aria-label="Các ảnh của tác phẩm">
+              <template v-for="image in galleryImages" :key="image.index">
+                <button
+                  v-if="!failedGalleryImages.has(image.index)"
+                  type="button"
+                  class="detail-gallery-thumb"
+                  :class="{ 'detail-gallery-thumb-active': selectedGalleryIndex === image.index }"
+                  :aria-label="`Chọn ${image.label}`"
+                  :aria-pressed="selectedGalleryIndex === image.index"
+                  @click="selectGalleryImage(image.index)"
+                >
+                  <img
+                    :src="image.src"
+                    :alt="image.alt"
+                    loading="lazy"
+                    @error="markGalleryImageFailed(image.index)"
+                  />
+                  <span>{{ image.label }}</span>
+                </button>
+                <div v-else class="detail-gallery-thumb detail-gallery-thumb-missing" aria-disabled="true">
+                  <span>{{ image.index === 0 ? 'Ảnh chính' : `Ảnh phụ ${image.index}` }}</span>
+                </div>
+              </template>
+            </div>
+          </div>
           <div v-else class="detail-no-image">Tác phẩm chưa có ảnh</div>
         </div>
 
@@ -557,11 +660,11 @@ onBeforeUnmount(() => {
 
     <!-- Trình xem ảnh toàn màn hình -->
     <div
-      v-if="imageViewerOpen && product?.img"
+      v-if="imageViewerOpen && selectedGalleryImage && !failedGalleryImages.has(selectedGalleryImage.index)"
       class="image-viewer-overlay"
       role="dialog"
       aria-modal="true"
-      :aria-label="`Xem ảnh lớn: ${product.name}`"
+      :aria-label="`Xem ảnh lớn: ${selectedGalleryImage?.alt ?? 'Ảnh sản phẩm'}`"
       @click.self="closeImageViewer"
       @wheel.prevent="handleImageWheel"
     >
@@ -591,8 +694,8 @@ onBeforeUnmount(() => {
         @lostpointercapture="handleViewerPointerUp"
       >
         <img
-          :src="imageUrl(product.img)"
-          :alt="product.name"
+          :src="selectedGalleryImage.src"
+          :alt="selectedGalleryImage.alt"
           ref="imageViewerImage"
           class="image-viewer-image"
           :class="{ 'is-dragging': isDragging, 'is-zoomed': zoomLevel > 1 }"
@@ -630,6 +733,13 @@ onBeforeUnmount(() => {
 .detail-description-panel { grid-column: 1 / -1; grid-row: 2; min-width: 0; padding: 24px 26px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 8px 25px rgb(15 23 42 / 4%); }
 .detail-description-panel h3 { margin: 0 0 14px; color: #334155; font-size: 16px; font-weight: 800; line-height: 1.4; }
 .detail-image-panel { display: flex; min-height: 420px; align-items: center; justify-content: center; overflow: hidden; padding: 18px; border: 1px solid #e2e8f0; border-radius: 22px; background: #cbd5e1; box-shadow: 0 12px 28px rgb(15 23 42 / 8%); }
+.detail-gallery { width: 100%; min-width: 0; }
+.detail-gallery-thumbnails { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; width: 100%; margin-top: 14px; }
+.detail-gallery-thumb { position: relative; display: flex; min-width: 0; min-height: 82px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 5px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; cursor: pointer; }
+.detail-gallery-thumb img { display: block; width: 100%; height: 65px; object-fit: contain; }
+.detail-gallery-thumb > span { max-width: 100%; overflow: hidden; font-size: 10px; line-height: 1.3; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.detail-gallery-thumb-active { border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626; color: #b91c1c; }
+.detail-gallery-thumb-missing { border-style: dashed; background: #f8fafc; cursor: default; }
 .detail-image-trigger { position: relative; display: flex; width: 100%; align-items: center; justify-content: center; padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: transparent; cursor: zoom-in; }
 .detail-image { display: block; width: 100%; max-height: 650px; border-radius: 14px; object-fit: contain; }
 .detail-image-hint { position: absolute; right: 12px; bottom: 12px; padding: 8px 11px; border: 1px solid rgb(255 255 255 / 22%); border-radius: 999px; background: rgb(15 23 42 / 78%); color: #fff; font-size: 11px; opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; pointer-events: none; }
@@ -712,7 +822,7 @@ onBeforeUnmount(() => {
   .detail-info-panel { padding: 23px; }
   .detail-description-panel { padding: 23px; }
 }
-@media (max-width: 480px) {
+@media (max-width: 480px) { .detail-gallery-thumbnails { gap: 6px; } .detail-gallery-thumb { min-height: 68px; padding: 4px; } .detail-gallery-thumb img { height: 48px; } .detail-gallery-thumb > span { font-size: 9px; }
   .related-products-section { margin-top: 38px; padding-top: 26px; }
   .related-products-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
   .related-products-grid { gap: 11px; }
