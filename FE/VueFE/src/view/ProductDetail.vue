@@ -148,30 +148,6 @@ function imageUrl(path: string | null | undefined): string {
     : `${STORAGE_BASE_URL}/storage/${normalized}`
 }
 
-function alternateImagePath(path: string, index: number): string {
-  // Giữ nguyên thư mục, phần mở rộng và query string (nếu có).
-  if (/^https?:\/\//i.test(path)) {
-    try {
-      const url = new URL(path)
-      const pathname = url.pathname
-      url.pathname = /\.[^./]+$/.test(pathname)
-        ? pathname.replace(/(\.[^./]+)$/i, `-${index}$1`)
-        : `${pathname}-${index}.jpg`
-      return url.toString()
-    } catch {
-      return path
-    }
-  }
-
-  const match = path.match(/^([^?#]*)([?#].*)?$/)
-  const pathname = match?.[1] ?? path
-  const suffix = match?.[2] ?? ''
-  const alternate = /\.[^./]+$/i.test(pathname)
-    ? pathname.replace(/(\.[^./]+)$/i, `-${index}$1`)
-    : `${pathname}-${index}.jpg`
-  return `${alternate}${suffix}`
-}
-
 const galleryImages = computed(() => {
   const current = product.value
   if (!current?.img) return []
@@ -183,45 +159,30 @@ const galleryImages = computed(() => {
     label: 'Ảnh chính',
   }
 
-  // Ưu tiên đường dẫn ảnh phụ lưu trong bảng product_images.
-  // Đây là nguồn dữ liệu chính xác khi Admin thay ảnh phụ.
+  // Lấy ảnh phụ từ API; không tự đoán tên file khi sản phẩm chưa có ảnh phụ.
   const savedImages = Array.isArray(current.images)
     ? [...current.images]
-        .filter((item): item is ProductImage => Boolean(item && typeof item.image === 'string' && item.image.trim()))
+        .filter((item): item is ProductImage => Boolean(
+          item && typeof item.image === 'string' && item.image.trim(),
+        ))
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
         .slice(0, 3)
-    : null
+    : []
 
-  if (savedImages && savedImages.length > 0) {
-    return [
-      mainImage,
-      ...savedImages.map((item, position) => {
-        const index = position + 1
-        return {
-          index,
-          src: imageUrl(item.image),
-          alt: `${current.name} - ảnh phụ ${index}`,
-          label: `Ảnh phụ ${index}`,
-        }
-      }),
-    ]
-  }
+  // Luôn tạo đủ 4 ô: 1 ảnh chính và 3 vị trí ảnh phụ.
+  // Nếu chưa có ảnh phụ, src để trống để hiển thị ô trống thay vì ảnh lỗi.
+  const secondarySlots = [1, 2, 3].map(index => {
+    const savedImage = savedImages[index - 1]
 
-  // Tương thích ảnh phụ cũ đặt tên theo hậu tố -1, -2, -3
-  // trước khi có bảng product_images.
-  if (savedImages === null || savedImages.length === 0) {
-    return [
-      mainImage,
-      ...[1, 2, 3].map(index => ({
-        index,
-        src: imageUrl(alternateImagePath(current.img as string, index)),
-        alt: `${current.name} - ảnh phụ ${index}`,
-        label: `Ảnh phụ ${index}`,
-      })),
-    ]
-  }
+    return {
+      index,
+      src: savedImage ? imageUrl(savedImage.image) : '',
+      alt: savedImage ? `${current.name} - ảnh phụ ${index}` : '',
+      label: `Ảnh phụ ${index}`,
+    }
+  })
 
-  return [mainImage]
+  return [mainImage, ...secondarySlots]
 })
 
 const selectedGalleryImage = computed(() =>
@@ -596,10 +557,14 @@ onBeforeUnmount(() => {
             </button>
             <div v-else class="detail-no-image">Tác phẩm chưa có ảnh</div>
 
-            <div class="detail-gallery-thumbnails" aria-label="Các ảnh của tác phẩm">
+            <div
+              v-if="galleryImages.some(image => image.index > 0 && image.src)"
+              class="detail-gallery-thumbnails"
+              aria-label="Các ảnh của tác phẩm"
+            >
               <template v-for="image in galleryImages" :key="image.index">
                 <button
-                  v-if="!failedGalleryImages.has(image.index)"
+                  v-if="image.src && !failedGalleryImages.has(image.index)"
                   type="button"
                   class="detail-gallery-thumb"
                   :class="{ 'detail-gallery-thumb-active': selectedGalleryIndex === image.index }"
@@ -618,7 +583,7 @@ onBeforeUnmount(() => {
                   v-else
                   class="detail-gallery-thumb detail-gallery-thumb-missing"
                   aria-disabled="true"
-                  :aria-label="`${image.label} không tải được`"
+                  :aria-label="image.src ? `${image.label} không tải được` : `${image.label} chưa có ảnh`"
                 ></div>
               </template>
             </div>
@@ -780,7 +745,7 @@ onBeforeUnmount(() => {
 .detail-gallery-thumb { position: relative; display: flex; min-width: 0; min-height: 82px; align-items: center; justify-content: center; padding: 5px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; cursor: pointer; }
 .detail-gallery-thumb img { display: block; width: 100%; height: 65px; object-fit: contain; }
 .detail-gallery-thumb-active { border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626; color: #b91c1c; }
-.detail-gallery-thumb-missing { border-style: dashed; background: #f8fafc; cursor: default; }
+.detail-gallery-thumb-missing { border: 1px solid #e2e8f0; background: #f8fafc; cursor: default; }
 .detail-image-trigger { position: relative; display: flex; width: 100%; align-items: center; justify-content: center; padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: transparent; cursor: zoom-in; }
 .detail-image { display: block; width: 100%; max-height: 650px; border-radius: 14px; object-fit: contain; }
 .detail-image-hint { position: absolute; right: 12px; bottom: 12px; padding: 8px 11px; border: 1px solid rgb(255 255 255 / 22%); border-radius: 999px; background: rgb(15 23 42 / 78%); color: #fff; font-size: 11px; opacity: 0; transform: translateY(4px); transition: opacity .2s, transform .2s; pointer-events: none; }
