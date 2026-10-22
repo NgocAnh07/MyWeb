@@ -485,7 +485,7 @@ private function saveAdditionalProductImage(
 }
 
 private function saveProductImage(
-    \Illuminate\Http\UploadedFile $file,
+    UploadedFile $file,
     string $productName,
     ?string $currentPath = null
 ): string {

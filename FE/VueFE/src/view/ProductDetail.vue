@@ -10,6 +10,12 @@ interface Category {
   slug?: string
 }
 
+interface ProductImage {
+  id?: number
+  image: string
+  sort_order?: number
+}
+
 interface Product {
   id: number
   slug?: string
@@ -18,6 +24,7 @@ interface Product {
   img: string | null
   category_id?: number | null
   category?: Category | null
+  images?: ProductImage[]
 }
 
 const route = useRoute()
@@ -31,8 +38,9 @@ const isDescriptionLong = ref(false)
 const relatedProducts = ref<Product[]>([])
 const relatedLoading = ref(false)
 
-// Bộ ảnh riêng cho trang chi tiết: ảnh chính lấy đúng từ product.img,
-// ảnh phụ được tìm theo tên file cùng gốc với hậu tố -1, -2, -3.
+// Bộ ảnh riêng cho trang chi tiết: ảnh chính lấy từ products.img,
+// ảnh phụ lấy từ quan hệ product_images do Laravel trả về.
+// Chỉ dùng cách suy ra tên file cũ khi API chưa trả về trường images.
 const selectedGalleryIndex = ref(0)
 const failedGalleryImages = ref<Set<number>>(new Set())
 
@@ -168,20 +176,52 @@ const galleryImages = computed(() => {
   const current = product.value
   if (!current?.img) return []
 
-  return [
-    {
-      index: 0,
-      src: imageUrl(current.img),
-      alt: current.name,
-      label: 'Ảnh chính',
-    },
-    ...[1, 2, 3].map(index => ({
-      index,
-      src: imageUrl(alternateImagePath(current.img as string, index)),
-      alt: `${current.name} - ảnh phụ ${index}`,
-      label: `Ảnh phụ ${index}`,
-    })),
-  ]
+  const mainImage = {
+    index: 0,
+    src: imageUrl(current.img),
+    alt: current.name,
+    label: 'Ảnh chính',
+  }
+
+  // Ưu tiên đường dẫn ảnh phụ lưu trong bảng product_images.
+  // Đây là nguồn dữ liệu chính xác khi Admin thay ảnh phụ.
+  const savedImages = Array.isArray(current.images)
+    ? [...current.images]
+        .filter((item): item is ProductImage => Boolean(item && typeof item.image === 'string' && item.image.trim()))
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .slice(0, 3)
+    : null
+
+  if (savedImages && savedImages.length > 0) {
+    return [
+      mainImage,
+      ...savedImages.map((item, position) => {
+        const index = position + 1
+        return {
+          index,
+          src: imageUrl(item.image),
+          alt: `${current.name} - ảnh phụ ${index}`,
+          label: `Ảnh phụ ${index}`,
+        }
+      }),
+    ]
+  }
+
+  // Tương thích ảnh phụ cũ đặt tên theo hậu tố -1, -2, -3
+  // trước khi có bảng product_images.
+  if (savedImages === null || savedImages.length === 0) {
+    return [
+      mainImage,
+      ...[1, 2, 3].map(index => ({
+        index,
+        src: imageUrl(alternateImagePath(current.img as string, index)),
+        alt: `${current.name} - ảnh phụ ${index}`,
+        label: `Ảnh phụ ${index}`,
+      })),
+    ]
+  }
+
+  return [mainImage]
 })
 
 const selectedGalleryImage = computed(() =>
@@ -573,11 +613,13 @@ onBeforeUnmount(() => {
                     loading="lazy"
                     @error="markGalleryImageFailed(image.index)"
                   />
-                  <span>{{ image.label }}</span>
                 </button>
-                <div v-else class="detail-gallery-thumb detail-gallery-thumb-missing" aria-disabled="true">
-                  <span>{{ image.index === 0 ? 'Ảnh chính' : `Ảnh phụ ${image.index}` }}</span>
-                </div>
+                <div
+                  v-else
+                  class="detail-gallery-thumb detail-gallery-thumb-missing"
+                  aria-disabled="true"
+                  :aria-label="`${image.label} không tải được`"
+                ></div>
               </template>
             </div>
           </div>
@@ -735,9 +777,8 @@ onBeforeUnmount(() => {
 .detail-image-panel { display: flex; min-height: 420px; align-items: center; justify-content: center; overflow: hidden; padding: 18px; border: 1px solid #e2e8f0; border-radius: 22px; background: #cbd5e1; box-shadow: 0 12px 28px rgb(15 23 42 / 8%); }
 .detail-gallery { width: 100%; min-width: 0; }
 .detail-gallery-thumbnails { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; width: 100%; margin-top: 14px; }
-.detail-gallery-thumb { position: relative; display: flex; min-width: 0; min-height: 82px; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 5px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; cursor: pointer; }
+.detail-gallery-thumb { position: relative; display: flex; min-width: 0; min-height: 82px; align-items: center; justify-content: center; padding: 5px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; color: #64748b; cursor: pointer; }
 .detail-gallery-thumb img { display: block; width: 100%; height: 65px; object-fit: contain; }
-.detail-gallery-thumb > span { max-width: 100%; overflow: hidden; font-size: 10px; line-height: 1.3; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .detail-gallery-thumb-active { border-color: #dc2626; box-shadow: 0 0 0 1px #dc2626; color: #b91c1c; }
 .detail-gallery-thumb-missing { border-style: dashed; background: #f8fafc; cursor: default; }
 .detail-image-trigger { position: relative; display: flex; width: 100%; align-items: center; justify-content: center; padding: 0; overflow: hidden; border: 0; border-radius: 14px; background: transparent; cursor: zoom-in; }
@@ -822,7 +863,7 @@ onBeforeUnmount(() => {
   .detail-info-panel { padding: 23px; }
   .detail-description-panel { padding: 23px; }
 }
-@media (max-width: 480px) { .detail-gallery-thumbnails { gap: 6px; } .detail-gallery-thumb { min-height: 68px; padding: 4px; } .detail-gallery-thumb img { height: 48px; } .detail-gallery-thumb > span { font-size: 9px; }
+@media (max-width: 480px) { .detail-gallery-thumbnails { gap: 6px; } .detail-gallery-thumb { min-height: 68px; padding: 4px; } .detail-gallery-thumb img { height: 48px; }
   .related-products-section { margin-top: 38px; padding-top: 26px; }
   .related-products-heading { align-items: flex-start; flex-direction: column; gap: 10px; }
   .related-products-grid { gap: 11px; }
