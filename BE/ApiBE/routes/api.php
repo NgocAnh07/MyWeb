@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BlogController;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\SitemapController;
+use App\Http\Controllers\Api\BannerController;
 
 // Đăng nhập
 Route::post('/login', [AuthController::class, 'login']);
@@ -19,6 +20,7 @@ Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/categories/{category}', [CategoryController::class, 'show']);
 Route::get('/blogs', [BlogController::class, 'index']);
 Route::get('/blogs/{identifier}', [BlogController::class, 'show']);
+Route::get('/banner', [BannerController::class, 'show']);
 
 // API yêu cầu đăng nhập.
 Route::middleware('auth:sanctum')->group(function () {
@@ -37,5 +39,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::apiResource('categories', CategoryController::class)
             ->except(['index', 'show']);
+        Route::post('/banner', [BannerController::class, 'update']);
     });
 });

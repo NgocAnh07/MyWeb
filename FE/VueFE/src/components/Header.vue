@@ -310,7 +310,7 @@ onBeforeUnmount(() => {
             <router-link
               :to="{ path: '/', hash: '#blog' }"
               class="nav-link text-base font-medium"
-            >Tin tức</router-link>
+            >Bài viết</router-link>
             <router-link
               :to="{ path: '/', hash: '#contact' }"
               class="nav-link text-base font-medium"

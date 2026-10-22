@@ -13,6 +13,7 @@ import SearchProduct from '../view/SearchProduct.vue'
 import ProductDetail from '../view/ProductDetail.vue'
 import BlogDetail from '../view/BlogDetail.vue'
 import SlugDetail from '../view/SlugDetail.vue'
+import BannerAdmin from '../view/BannerAdmin.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -90,6 +91,12 @@ const router = createRouter({
       name: 'blog-detail',
       component: BlogDetail,
     },
+    {
+  path: '/admin/banner',
+  name: 'admin-banner',
+  component: BannerAdmin,
+  meta: { requiresAdmin: true },
+},
     {
   path: '/:slug',
   name: 'product-detail',

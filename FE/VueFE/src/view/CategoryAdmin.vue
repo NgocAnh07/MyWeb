@@ -305,6 +305,20 @@ onMounted(() => {
   Quản lý bài viết
 </router-link>
 
+<!-- Thay banner -->
+<router-link
+  to="/admin/banner"
+  class="category-nav-item"
+  active-class="category-nav-active"
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="8.5" cy="9" r="1.5" />
+    <path d="m21 15-5-5L5 20" />
+  </svg>
+  Thay banner
+</router-link>
+
       </nav>
 
       <div class="category-sidebar-bottom">

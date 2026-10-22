@@ -20,6 +20,8 @@ interface FeaturedProduct {
 }
 
 const featuredProducts = ref<FeaturedProduct[]>([])
+// Banner trang chủ, dùng ảnh mặc định nếu chưa có banner từ API.
+const heroBannerUrl = ref('/assets/banner.jpg')
 const featuredLoading = ref(false)
 const featuredError = ref('')
 
@@ -165,7 +167,21 @@ function featuredImageUrl(path: string | null | undefined): string {
   // Ví dụ products/anh.jpg -> /storage/products/anh.jpg.
   return `${STORAGE_BASE_URL}/storage/${normalizedPath}`
 }
+/// banner
+async function loadHeroBanner() {
+  try {
+    const response = await axios.get<{ path: string | null }>(
+      `${API_URL}/banner`,
+    )
 
+    if (response.data.path) {
+      heroBannerUrl.value = featuredImageUrl(response.data.path)
+    }
+  } catch (error) {
+    console.error('Không tải được banner trang chủ:', error)
+    // Giữ ảnh mặc định nếu API gặp lỗi.
+  }
+}
 async function loadFeaturedProducts() {
   featuredLoading.value = true
   featuredError.value = ''
@@ -261,6 +277,7 @@ onMounted(async () => {
   await Promise.all([
   loadFeaturedProducts(),
   loadRandomBlogs(),
+  loadHeroBanner(),
 ])
 })
 </script>
@@ -320,14 +337,14 @@ onMounted(async () => {
 >
         <div class="relative">
           <div
-  class="w-64 h-64 sm:w-80 sm:h-80 xl:w-96 xl:h-96 bg-gradient-to-br from-red-600/20 to-slate-600/20 rounded-3xl border border-white/10 flex items-center justify-center overflow-hidden"
+  class="hero-banner-frame bg-gradient-to-br from-red-600/20 to-slate-600/20 rounded-3xl border border-white/10 flex items-center justify-center overflow-hidden"
   style="animation: float 6s ease-in-out infinite;"
 >
             <img
-              src="/assets/banner.jpg"
-              alt="Banner Duy Chân Dung"
-              class="w-full h-full object-cover"
-            />
+  :src="heroBannerUrl"
+  alt="Banner Duy Chân Dung"
+  class="w-full h-full object-cover"
+/>
           </div>
         </div>
       </div>
@@ -979,4 +996,31 @@ onMounted(async () => {
   transform: translateY(-4px);
 }
 
+.hero-banner-frame {
+  width: 100%;
+  max-width: 620px;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.hero-banner-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 1023px) {
+  .hero-banner-frame {
+    max-width: 520px;
+  }
+}
+
+@media (max-width: 639px) {
+  .hero-banner-frame {
+    width: 90vw;
+    max-width: 360px;
+  }
+}
 </style>

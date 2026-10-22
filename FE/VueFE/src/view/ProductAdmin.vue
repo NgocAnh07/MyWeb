@@ -965,6 +965,15 @@ onBeforeUnmount(() => {
   Quản lý bài viết
 </router-link>
 
+<!-- Thay banner -->
+<router-link
+  to="/admin/banner"
+  class="product-nav-item"
+  active-class="product-nav-active"
+>
+  <span class="product-nav-icon">🖼</span>
+  Thay banner
+</router-link>
 
       </nav>
 

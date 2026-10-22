@@ -285,12 +285,13 @@ onMounted(() => {
             </svg>
             Danh mục sản phẩm
           </router-link>
-
+          
          
         <router-link
   to="/admin/blogs"
   class="dash-nav-item"
 >
+
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
     <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
@@ -298,6 +299,20 @@ onMounted(() => {
   Quản lý bài viết
         </router-link>
 
+        
+<router-link
+  to="/admin/banner"
+  class="dash-nav-item"
+  active-class="dash-nav-active"
+>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <circle cx="8.5" cy="9" r="1.5" />
+    <path d="m21 15-5-5L5 20" />
+  </svg>
+  Thay banner
+</router-link>
+        
         </nav>
 
       <div class="dash-sidebar-bottom">

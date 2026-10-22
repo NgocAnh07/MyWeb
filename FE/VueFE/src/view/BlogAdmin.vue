@@ -570,6 +570,8 @@ onBeforeUnmount(clearImagePreview)
         <router-link to="/admin/products" class="blog-nav-item"><span>▧</span>Quản lý tranh</router-link>
         <router-link to="/admin/categories" class="blog-nav-item"><span>▤</span>Danh mục sản phẩm</router-link>
         <router-link to="/admin/blogs" class="blog-nav-item blog-nav-active"><span>▤</span>Quản lý bài viết</router-link>
+        <router-link to="/admin/banner" class="blog-nav-item" active-class="blog-nav-active"><span>▧</span>Thay banner</router-link>
+        
       </nav>
       <div class="blog-sidebar-bottom">
         <div class="blog-profile"><div class="blog-avatar">{{ adminUsername.charAt(0).toUpperCase() }}</div><div><strong>{{ adminUsername }}</strong><small>Quản trị viên</small></div></div>
