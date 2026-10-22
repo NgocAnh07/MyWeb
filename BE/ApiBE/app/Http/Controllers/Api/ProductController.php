@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 class ProductController extends Controller
@@ -25,11 +26,11 @@ public function show(string $product)
 {
     if (ctype_digit($product)) {
         // URL cũ: tìm sản phẩm bằng ID.
-        $item = Product::with('category')
+        $item = Product::with(['category', 'images'])
             ->findOrFail((int) $product);
     } else {
         // URL mới: tìm sản phẩm bằng slug.
-        $item = Product::with('category')
+        $item = Product::with(['category', 'images'])
             ->where('slug', $product)
             ->firstOrFail();
     }
@@ -46,23 +47,46 @@ public function show(string $product)
             'description' => 'required|string',
             'category_id' => 'required|integer|exists:categories,id',
             'img' => 'required|image|max:5120',
+            'images' => 'sometimes|array|max:3',
+            'images.*' => 'image|max:5120',
         ]);
-        $data['slug'] = $this->makeUniqueSlug($data['name']);
 
-        // Chỉ lưu HTML đã được lọc an toàn.
-        $data['description'] = $this->sanitizeProductHtml(
-            $data['description']
-        );
+        // Tách ảnh phụ khỏi dữ liệu cột products.
+        $additionalImages = $request->file('images', []);
+        unset($data['images']);
+
+        $data['slug'] = $this->makeUniqueSlug($data['name']);
+        $data['description'] = $this->sanitizeProductHtml($data['description']);
 
         if ($request->hasFile('img')) {
-    $data['img'] = $this->saveProductImage(
-        $request->file('img'),
-        $data['name']
-    );
-}
+            $data['img'] = $this->saveProductImage(
+                $request->file('img'),
+                $data['name']
+            );
+        }
 
         $product = Product::create($data);
-        $product->load('category');
+
+        // Lưu tối đa 3 ảnh phụ. Ảnh chính vẫn nằm trong products.img.
+        foreach (array_values(is_array($additionalImages) ? $additionalImages : []) as $index => $file) {
+            if (!$file instanceof UploadedFile) {
+                continue;
+            }
+
+            $path = $this->saveAdditionalProductImage(
+                $file,
+                $product->img,
+                $product->id,
+                $index + 1
+            );
+
+            $product->images()->create([
+                'image' => $path,
+                'sort_order' => $index + 1,
+            ]);
+        }
+
+        $product->load(['category', 'images']);
 
         return response()->json([
             'message' => 'Thêm sản phẩm thành công',
@@ -77,80 +101,111 @@ public function show(string $product)
             'name' => 'sometimes|required|string|max:255',
             'description' => 'sometimes|required|string',
             'category_id' => 'sometimes|required|integer|exists:categories,id',
-
-            // Không bắt buộc chọn ảnh mới khi sửa sản phẩm.
             'img' => 'sometimes|nullable|image|max:5120',
+            'images' => 'sometimes|array|max:3',
+            'images.*' => 'image|max:5120',
         ]);
+
+        // Nếu FE gửi ảnh phụ mới, thay bộ ảnh phụ cũ bằng bộ mới.
+        $additionalImages = $request->file('images', []);
+        $replaceAdditionalImages = $request->hasFile('images');
+        unset($data['images']);
+
         // Chỉ tạo slug mới khi tên sản phẩm thực sự thay đổi.
-if (
-    isset($data['name']) &&
-    $data['name'] !== $product->name
-) {
-    $data['slug'] = $this->makeUniqueSlug(
-        $data['name'],
-        $product->id
-    );
-}
+        if (isset($data['name']) && $data['name'] !== $product->name) {
+            $data['slug'] = $this->makeUniqueSlug($data['name'], $product->id);
+        }
 
         if (array_key_exists('description', $data)) {
-            $data['description'] = $this->sanitizeProductHtml(
-                $data['description']
-            );
+            $data['description'] = $this->sanitizeProductHtml($data['description']);
         }
 
         if ($request->hasFile('img')) {
-    // Có chọn ảnh mới: lưu ảnh theo tên sản phẩm
-    $oldImage = $product->img;
+            $oldImage = $product->img;
+            $newImage = $this->saveProductImage(
+                $request->file('img'),
+                $data['name'] ?? $product->name,
+                $oldImage
+            );
+            $data['img'] = $newImage;
 
-    $newImage = $this->saveProductImage(
-        $request->file('img'),
-        $data['name'] ?? $product->name,
-        $oldImage
-    );
+            if ($oldImage && $oldImage !== $newImage) {
+                Storage::disk('public')->delete($oldImage);
+            }
+        } elseif (
+            isset($data['name']) &&
+            $data['name'] !== $product->name &&
+            $product->img &&
+            Storage::disk('public')->exists($product->img)
+        ) {
+            // Giữ hành vi hiện có: đổi tên file ảnh chính khi đổi tên sản phẩm.
+            $oldImage = $product->img;
+            $productName = $data['name'];
+            $baseName = Str::slug($productName) ?: 'product';
+            $extension = pathinfo($oldImage, PATHINFO_EXTENSION) ?: 'jpg';
+            $disk = Storage::disk('public');
+            $filename = "{$baseName}.{$extension}";
+            $newImage = "products/{$filename}";
+            $counter = 2;
 
-    $data['img'] = $newImage;
+            while ($disk->exists($newImage) && $newImage !== $oldImage) {
+                $filename = "{$baseName}-{$counter}.{$extension}";
+                $newImage = "products/{$filename}";
+                $counter++;
+            }
 
-    // Xóa ảnh cũ nếu đường dẫn đã thay đổi
-    if ($oldImage && $oldImage !== $newImage) {
-        Storage::disk('public')->delete($oldImage);
-    }
-} elseif (
-    $product->img &&
-    Storage::disk('public')->exists($product->img)
-) {
-    // Không chọn ảnh mới: đổi tên file ảnh hiện tại
-    $oldImage = $product->img;
-    $productName = $data['name'] ?? $product->name;
-
-    $baseName = Str::slug($productName) ?: 'product';
-    $extension = pathinfo($oldImage, PATHINFO_EXTENSION) ?: 'jpg';
-
-    $disk = Storage::disk('public');
-    $filename = "{$baseName}.{$extension}";
-    $newImage = "products/{$filename}";
-    $counter = 2;
-
-    // Tránh ghi đè ảnh của sản phẩm khác
-    while (
-        $disk->exists($newImage) &&
-        $newImage !== $oldImage
-    ) {
-        $filename = "{$baseName}-{$counter}.{$extension}";
-        $newImage = "products/{$filename}";
-        $counter++;
-    }
-
-    // Chỉ đổi tên file khi đường dẫn thực sự thay đổi
-    if (
-        $newImage !== $oldImage &&
-        $disk->move($oldImage, $newImage)
-    ) {
-        $data['img'] = $newImage;
-    }
-}
+            if ($newImage !== $oldImage && $disk->move($oldImage, $newImage)) {
+                $data['img'] = $newImage;
+            }
+        }
 
         $product->update($data);
-        $product->load('category');
+
+        if ($replaceAdditionalImages) {
+            $oldImages = $product->images()->get();
+            $newImagePaths = [];
+            $baseImagePath = $product->img;
+
+            try {
+                foreach (array_values(is_array($additionalImages) ? $additionalImages : []) as $index => $file) {
+                    if (!$file instanceof UploadedFile) {
+                        continue;
+                    }
+
+                    $path = $this->saveAdditionalProductImage(
+                        $file,
+                        $baseImagePath,
+                        $product->id,
+                        $index + 1
+                    );
+                    $newImagePaths[] = $path;
+
+                    $product->images()->create([
+                        'image' => $path,
+                        'sort_order' => $index + 1,
+                    ]);
+                }
+            } catch (\Throwable $exception) {
+                foreach ($newImagePaths as $path) {
+                    Storage::disk('public')->delete($path);
+                }
+                // Xóa các bản ghi ảnh mới nếu quá trình lưu bị lỗi.
+                $product->images()->whereIn('image', $newImagePaths)->delete();
+                throw $exception;
+            }
+
+            // Chỉ xóa ảnh cũ sau khi ảnh mới đã lưu thành công.
+            foreach ($oldImages as $oldImage) {
+                if ($oldImage->image) {
+                    Storage::disk('public')->delete($oldImage->image);
+                }
+            }
+            if ($oldImages->isNotEmpty()) {
+                $product->images()->whereIn('id', $oldImages->pluck('id'))->delete();
+            }
+        }
+
+        $product->load(['category', 'images']);
 
         return response()->json([
             'message' => 'Cập nhật sản phẩm thành công',
@@ -161,6 +216,13 @@ if (
     // Xóa sản phẩm.
     public function destroy(Product $product)
     {
+        // Xóa cả file ảnh phụ trước khi xóa sản phẩm.
+        foreach ($product->images()->get() as $productImage) {
+            if ($productImage->image) {
+                Storage::disk('public')->delete($productImage->image);
+            }
+        }
+
         if ($product->img) {
             Storage::disk('public')->delete($product->img);
         }
@@ -391,6 +453,37 @@ if (
 
     return $slug;
 }
+private function saveAdditionalProductImage(
+    UploadedFile $file,
+    ?string $mainImagePath,
+    int $productId,
+    int $sortOrder
+): string {
+    $mainBaseName = $mainImagePath
+        ? pathinfo($mainImagePath, PATHINFO_FILENAME)
+        : 'product-' . $productId;
+    $extension = $file->guessExtension() ?: 'jpg';
+    $disk = Storage::disk('public');
+
+    $filename = "{$mainBaseName}-{$sortOrder}.{$extension}";
+    $path = "products/{$filename}";
+
+    // Không ghi đè ảnh thuộc sản phẩm khác hoặc ảnh cũ đang còn trên ổ đĩa.
+    if ($disk->exists($path)) {
+        $filename = "{$mainBaseName}-{$sortOrder}-{$productId}.{$extension}";
+        $path = "products/{$filename}";
+        $counter = 2;
+
+        while ($disk->exists($path)) {
+            $filename = "{$mainBaseName}-{$sortOrder}-{$productId}-{$counter}.{$extension}";
+            $path = "products/{$filename}";
+            $counter++;
+        }
+    }
+
+    return $file->storeAs('products', $filename, 'public');
+}
+
 private function saveProductImage(
     \Illuminate\Http\UploadedFile $file,
     string $productName,
