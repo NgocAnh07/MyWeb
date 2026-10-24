@@ -161,7 +161,7 @@ function handleNewsletter() {
               <div>
                 <div class="text-slate-300 text-xs font-semibold mb-0.5">Email</div>
                 <a href="mailto:tranhveduyart190gmail"
-                  class="text-slate-500 text-xs hover:text-red-400 transition-colors">tranhveduyart190gmail</a><br />
+                  class="text-slate-500 text-xs hover:text-red-400 transition-colors">tranhveduyart190@gmail</a><br />
               </div>
             </li>
           </ul>

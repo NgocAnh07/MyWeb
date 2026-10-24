@@ -435,7 +435,8 @@ onMounted(async () => {
 
       <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Service Card 1 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="0">
+         
+         <router-link :to="{ path: '/search-products', query: { category: '1' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="0">          
           <div
             class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
             <i class="fa-solid fa-user"></i>
@@ -446,10 +447,10 @@ onMounted(async () => {
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Chúng tôi sẽ biến bức ảnh của bạn thành bức tranh sơn dầu đầy màu sắc.</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
 
         <!-- Service Card 2 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="100">
+         <router-link :to="{ path: '/search-products', query: { category: '2' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="0">
           <div
             class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-blue-600 transition-colors">
            <i
@@ -461,10 +462,10 @@ onMounted(async () => {
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện trọn vẹn những khung cảnh diễm lệ nhất của thế giới vào trong kiệt tác</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
 
         <!-- Service Card 3 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="200">
+         <router-link :to="{ path: '/search-products', query: { category: '3' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="0">
           <div
             class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-purple-600 transition-colors">
            <i
@@ -477,10 +478,10 @@ onMounted(async () => {
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Tái hiện bản thân vào khung cảnh lịch sử hoặc nhân vật lịch sử</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
 
         <!-- Service Card 4 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="0">
+         <router-link :to="{ path: '/search-products', query: { category: '7' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="0">
           <div
             class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-green-600 transition-colors">
             <i
@@ -492,10 +493,10 @@ onMounted(async () => {
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Lớp màu sơn dầu khắc họa vẻ đẹp mọng nước, tràn đầy sức sống của cỏ cây</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
 
         <!-- Service Card 5 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="100">
+        <router-link :to="{ path: '/search-products', query: { category: '5' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="100">
           <div
             class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-yellow-500 transition-colors">
             <i
@@ -507,10 +508,10 @@ onMounted(async () => {
           <p class="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">Đôi bàn tay tài hoa đã thổi nhịp sống vào nét vẽ, làm bừng sáng không gian bằng sắc hoa không bao giờ phai tàn</p>
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">Xem thêm <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
 
         <!-- Service Card 6 -->
-        <div class="card-medical dark:bg-slate-800 dark:border-slate-700 group" data-aos="fade-up" data-aos-delay="200">
+        <router-link :to="{ path: '/search-products', query: { category: '6' } }" class="card-medical dark:bg-slate-800 dark:border-slate-700 group block text-inherit no-underline" data-aos="fade-up" data-aos-delay="200">
           <div
             class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-4 group-hover:bg-red-600 transition-colors">
             <i
@@ -524,7 +525,7 @@ onMounted(async () => {
           <a href="#"
             class="mt-4 flex items-center gap-1 text-red-600 text-sm font-semibold hover:gap-2 transition-all">xem thêm
             <i data-lucide="arrow-right" class="w-4 h-4"></i></a>
-        </div>
+        </router-link>
       </div>
     </div>
   </section>
