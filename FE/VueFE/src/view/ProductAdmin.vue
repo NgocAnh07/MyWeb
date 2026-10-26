@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
@@ -87,35 +87,47 @@ const form = ref({
 })
 
 const currentPage = ref(1)
-
-const lastPage = ref(1)
-
+const pageSize = 20
 const totalProducts = ref(0)
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, character => character === 'Đ' ? 'D' : 'd')
+    .toLocaleLowerCase('vi-VN')
+    .trim()
+}
+
 const filteredProducts = computed(() => {
-
-  const keyword = searchQuery.value.trim().toLowerCase()
-
+  const keyword = normalizeSearchText(searchQuery.value)
   if (!keyword) return products.value
 
   return products.value.filter(product => {
+    const categoryName = product.category?.name ?? getCategoryName(product.category_id)
+    const searchableText = normalizeSearchText([
+      product.name ?? '',
+      categoryName,
+      textOnly(product.description ?? ''),
+      String(product.id),
+    ].join(' '))
 
-    const categoryName =
-
-      product.category?.name ??
-
-      getCategoryName(product.category_id)
-
-    return (
-
-      product.name.toLowerCase().includes(keyword) ||
-
-      categoryName.toLowerCase().includes(keyword)
-
-    )
-
+    const words = keyword.split(/\s+/).filter(Boolean)
+    return words.every(word => searchableText.includes(word))
   })
+})
 
+const lastPage = computed(() =>
+  Math.max(1, Math.ceil(filteredProducts.value.length / pageSize)),
+)
+
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredProducts.value.slice(start, start + pageSize)
+})
+
+watch(searchQuery, () => {
+  currentPage.value = 1
 })
 
 function loadAdminUsername() {
@@ -278,74 +290,60 @@ async function loadCategories() {
 
 }
 
-async function loadProducts(page = currentPage.value) {
-
+async function loadProducts(page = 1) {
   loading.value = true
-
   errorMessage.value = ''
 
   try {
+    // Laravel đang phân trang API; tải tất cả các trang trước khi phân trang
+    // cục bộ 20 sản phẩm/trang để kết quả tìm kiếm không bị giới hạn ở 12 sản phẩm đầu.
+    const firstResponse = await axios.get(`${API_URL}/products?page=1`, getConfig())
+    const firstPayload: unknown = firstResponse.data
+    const allProducts = extractList<Product>(firstPayload)
 
-    const response = await axios.get(
-
-      `${API_URL}/products?page=${page}`,
-
-      getConfig(),
-
-    )
-
-    const payload = response.data
-
-    products.value = extractList<Product>(payload)
-
-    if (
-
-      typeof payload === 'object' &&
-
-      payload !== null &&
-
-      !Array.isArray(payload)
-
-    ) {
-
-      const data = payload as Record<string, unknown>
-
-      currentPage.value =
-
-        typeof data.current_page === 'number' ? data.current_page : page
-
-      lastPage.value =
-
-        typeof data.last_page === 'number' ? data.last_page : 1
-
-      totalProducts.value =
-
-        typeof data.total === 'number' ? data.total : products.value.length
-
-    } else {
-
-      currentPage.value = 1
-
-      lastPage.value = 1
-
-      totalProducts.value = products.value.length
-
+    let apiLastPage = 1
+    if (typeof firstPayload === 'object' && firstPayload !== null && !Array.isArray(firstPayload)) {
+      const payload = firstPayload as Record<string, unknown>
+      if (typeof payload.last_page === 'number') {
+        apiLastPage = Math.max(1, payload.last_page)
+      } else if (typeof payload.meta === 'object' && payload.meta !== null) {
+        const metaLastPage = (payload.meta as Record<string, unknown>).last_page
+        if (typeof metaLastPage === 'number') apiLastPage = Math.max(1, metaLastPage)
+      }
     }
 
+    if (apiLastPage > 1) {
+      const pageResults = await Promise.all(
+        Array.from({ length: apiLastPage - 1 }, (_, index) =>
+          axios.get(`${API_URL}/products?page=${index + 2}`, getConfig()),
+        ),
+      )
+      for (const response of pageResults) {
+        allProducts.push(...extractList<Product>(response.data))
+      }
+    }
+
+    // Loại bỏ sản phẩm trùng nếu API có dữ liệu lặp giữa các trang.
+    const uniqueProducts = new Map<number, Product>()
+    for (const item of allProducts) uniqueProducts.set(item.id, item)
+    products.value = Array.from(uniqueProducts.values())
+    totalProducts.value = products.value.length
+
+    await nextTick()
+    currentPage.value = Math.min(Math.max(1, page), lastPage.value)
   } catch (error: unknown) {
-
     products.value = []
-
     totalProducts.value = 0
-
+    currentPage.value = 1
     errorMessage.value = getErrorMessage(error)
-
   } finally {
-
     loading.value = false
-
   }
+}
 
+function changePage(page: number) {
+  if (page < 1 || page > lastPage.value) return
+  currentPage.value = page
 }
 
 function clearImagePreview() {
@@ -1149,7 +1147,7 @@ onBeforeUnmount(() => {
 
                 type="search"
 
-                placeholder="Tìm tên tranh hoặc danh mục..."
+                placeholder="Tìm tên tranh, danh mục hoặc mô tả..."
 
               />
 
@@ -1203,7 +1201,7 @@ onBeforeUnmount(() => {
 
                 </tr>
 
-                <tr v-for="product in filteredProducts" :key="product.id">
+                <tr v-for="product in paginatedProducts" :key="product.id">
 
                   <td>
 
@@ -1309,9 +1307,9 @@ onBeforeUnmount(() => {
 
             <span>
 
-              Tổng {{ totalProducts }} sản phẩm · Trang {{ currentPage }} /
-
-              {{ lastPage }}
+              Tìm thấy {{ filteredProducts.length }} sản phẩm
+              <template v-if="searchQuery.trim()">phù hợp</template>
+              · Trang {{ currentPage }} / {{ lastPage }}
 
             </span>
 
@@ -1321,7 +1319,7 @@ onBeforeUnmount(() => {
 
                 :disabled="loading || currentPage <= 1"
 
-                @click="loadProducts(currentPage - 1)"
+                @click="changePage(currentPage - 1)"
 
               >
 
@@ -1333,7 +1331,7 @@ onBeforeUnmount(() => {
 
                 :disabled="loading || currentPage >= lastPage"
 
-                @click="loadProducts(currentPage + 1)"
+                @click="changePage(currentPage + 1)"
 
               >
 

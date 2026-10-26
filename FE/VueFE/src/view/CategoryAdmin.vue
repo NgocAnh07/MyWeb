@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL } from '../config/api'
 import { useRouter } from 'vue-router'
@@ -32,15 +32,62 @@ const form = ref({
   is_active: true,
 })
 
+const currentPage = ref(1)
+const pageSize = 20
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, character => character === 'Đ' ? 'D' : 'd')
+    .toLocaleLowerCase('vi-VN')
+    .trim()
+}
+
 const filteredCategories = computed(() => {
-  const keyword = searchQuery.value.trim().toLowerCase()
+  const keyword = normalizeSearchText(searchQuery.value)
   if (!keyword) return categories.value
 
-  return categories.value.filter(category =>
-    category.name.toLowerCase().includes(keyword) ||
-    category.slug.toLowerCase().includes(keyword),
-  )
+  return categories.value.filter(category => {
+    const searchableText = normalizeSearchText([
+      category.name,
+      category.slug,
+      category.description ?? '',
+      String(category.id),
+      String(category.products_count ?? ''),
+      isActive(category) ? 'hoat dong dang hoat dong' : 'tam an khong hoat dong',
+    ].join(' '))
+
+    return searchableText.includes(keyword)
+  })
 })
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(filteredCategories.value.length / pageSize)),
+)
+
+const paginatedCategories = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredCategories.value.slice(start, start + pageSize)
+})
+
+const pageNumbers = computed(() =>
+  Array.from({ length: totalPages.value }, (_, index) => index + 1),
+)
+
+watch(searchQuery, () => {
+  currentPage.value = 1
+})
+
+watch(totalPages, pageCount => {
+  if (currentPage.value > pageCount) currentPage.value = pageCount
+})
+
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 function getConfig() {
   const token = localStorage.getItem('auth_token')
@@ -114,24 +161,61 @@ function updateSlug() {
   }
 }
 
+function extractCategoryList(payload: unknown): Category[] {
+  if (Array.isArray(payload)) return payload as Category[]
+
+  if (typeof payload === 'object' && payload !== null) {
+    const data = (payload as Record<string, unknown>).data
+    if (Array.isArray(data)) return data as Category[]
+  }
+
+  return []
+}
+
+function extractCategoryLastPage(payload: unknown): number {
+  if (typeof payload !== 'object' || payload === null) return 1
+
+  const data = payload as Record<string, unknown>
+  if (typeof data.last_page === 'number') return Math.max(1, data.last_page)
+
+  const meta = data.meta
+  if (typeof meta === 'object' && meta !== null) {
+    const lastPage = (meta as Record<string, unknown>).last_page
+    if (typeof lastPage === 'number') return Math.max(1, lastPage)
+  }
+
+  return 1
+}
+
 async function loadCategories() {
   loading.value = true
   errorMessage.value = ''
 
   try {
-    const response = await axios.get(`${API_URL}/categories`, getConfig())
+    const response = await axios.get(`${API_URL}/categories?page=1`, getConfig())
     const payload: unknown = response.data
+    const allCategories = extractCategoryList(payload)
+    const lastPage = extractCategoryLastPage(payload)
 
-    if (Array.isArray(payload)) {
-      categories.value = payload as Category[]
-    } else if (
-      typeof payload === 'object' && payload !== null &&
-      Array.isArray((payload as Record<string, unknown>).data)
-    ) {
-      categories.value = (payload as { data: Category[] }).data
-    } else {
-      categories.value = []
+    // Nếu Laravel phân trang API danh mục, tải tất cả trang trước khi lọc.
+    if (lastPage > 1) {
+      const remainingPages = await Promise.allSettled(
+        Array.from({ length: lastPage - 1 }, (_, index) =>
+          axios.get(`${API_URL}/categories?page=${index + 2}`, getConfig()),
+        ),
+      )
+
+      for (const result of remainingPages) {
+        if (result.status === 'fulfilled') {
+          allCategories.push(...extractCategoryList(result.value.data))
+        }
+      }
     }
+
+    // Loại trùng theo ID phòng API trả lặp dữ liệu ở các trang.
+    const uniqueCategories = new Map<number, Category>()
+    for (const category of allCategories) uniqueCategories.set(category.id, category)
+    categories.value = Array.from(uniqueCategories.values())
   } catch (error: unknown) {
     categories.value = []
     errorMessage.value = getErrorMessage(error)
@@ -406,7 +490,7 @@ onMounted(() => {
                     {{ searchQuery ? 'Không tìm thấy danh mục phù hợp.' : 'Chưa có danh mục nào.' }}
                   </td>
                 </tr>
-                <tr v-for="category in filteredCategories" :key="category.id">
+                <tr v-for="category in paginatedCategories" :key="category.id">
                   <td>
                     <div class="category-name-cell">
                       <div class="category-row-icon">▤</div>
@@ -435,7 +519,32 @@ onMounted(() => {
           </div>
 
           <div class="category-table-footer">
-            Hiển thị {{ filteredCategories.length }} / {{ categories.length }} danh mục
+            <span>
+              Hiển thị {{ filteredCategories.length === 0 ? 0 : (currentPage - 1) * pageSize + 1 }}–{{ Math.min(currentPage * pageSize, filteredCategories.length) }}
+              / {{ filteredCategories.length }} danh mục phù hợp · Tổng {{ categories.length }} danh mục
+            </span>
+
+            <nav v-if="totalPages > 1" class="category-pagination" aria-label="Phân trang danh mục">
+              <button
+                type="button"
+                :disabled="loading || currentPage <= 1"
+                @click="goToPage(currentPage - 1)"
+              >Trước</button>
+              <button
+                v-for="page in pageNumbers"
+                :key="page"
+                type="button"
+                :class="{ 'category-page-active': currentPage === page }"
+                :aria-current="currentPage === page ? 'page' : undefined"
+                @click="goToPage(page)"
+              >{{ page }}</button>
+              <button
+                type="button"
+                :disabled="loading || currentPage >= totalPages"
+                @click="goToPage(currentPage + 1)"
+              >Sau</button>
+            </nav>
+
             <button class="category-refresh-btn" type="button" :disabled="loading" @click="loadCategories">
               ↻ Làm mới
             </button>
@@ -575,6 +684,12 @@ onMounted(() => {
 .category-table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; border-top: 1px solid #edf0ed; color: #929d94; font-size: 10px; }
 .category-refresh-btn { padding: 7px 10px; border: 1px solid #e2e9e3; border-radius: 7px; background: #fff; color: #597362; cursor: pointer; }
 .category-refresh-btn:disabled { opacity: .6; cursor: wait; }
+.category-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
+.category-pagination button { min-width: 30px; padding: 7px 9px; border: 1px solid #e2e9e3; border-radius: 7px; background: #fff; color: #597362; font-size: 10px; cursor: pointer; }
+.category-pagination button:hover:not(:disabled) { border-color: #9cc8a8; background: #f1faf3; }
+.category-pagination button.category-page-active { border-color: var(--green); background: var(--green); color: #fff; }
+.category-pagination button:disabled { opacity: .4; cursor: not-allowed; }
+@media (max-width: 900px) { .category-table-footer { align-items: flex-start; flex-direction: column; } .category-pagination { justify-content: flex-start; } }
 .category-modal-overlay { position: fixed; z-index: 1000; inset: 0; display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: 20px; background: rgb(22 39 28 / 45%); }
 .category-modal { width: 100%; max-width: 520px; max-height: calc(100vh - 40px); overflow-y: auto; border: 1px solid #e8eee9; border-radius: 15px; background: #fff; box-shadow: 0 20px 70px rgb(0 0 0 / 15%); }
 .category-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; padding: 23px 25px 18px; border-bottom: 1px solid #edf0ed; }

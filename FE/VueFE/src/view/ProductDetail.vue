@@ -2,12 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 interface Category {
   id: number
   name: string
   slug?: string
+  is_active?: boolean | number | string
 }
 
 interface ProductImage {
@@ -28,6 +29,7 @@ interface Product {
 }
 
 const route = useRoute()
+const router = useRouter()
 const product = ref<Product | null>(null)
 const categories = ref<Category[]>([])
 const loading = ref(false)
@@ -43,6 +45,13 @@ const relatedLoading = ref(false)
 // Chỉ dùng cách suy ra tên file cũ khi API chưa trả về trường images.
 const selectedGalleryIndex = ref(0)
 const failedGalleryImages = ref<Set<number>>(new Set())
+const categoryListRef = ref<HTMLDivElement | null>(null)
+const hasMoreCategories = ref(false)
+const isCategoryDragging = ref(false)
+let categoryDragStartX = 0
+let categoryDragStartScrollLeft = 0
+let categoryWasDragged = false
+let ignoreCategoryClickUntil = 0
 
 function safeDescriptionHtml(value: string): string {
   const raw = value.trim()
@@ -215,6 +224,100 @@ function getCategoryName(item: Product): string {
   return categories.value.find(category => category.id === categoryId)?.name ?? 'Chưa phân loại'
 }
 
+function isActiveCategory(category: Category): boolean {
+  return category.is_active === undefined ||
+    category.is_active === true ||
+    category.is_active === 1 ||
+    category.is_active === '1'
+}
+
+const currentProductCategoryId = computed<number | null>(() => {
+  const id = product.value?.category_id ?? product.value?.category?.id
+  return id == null ? null : Number(id)
+})
+
+function updateCategoryOverflow() {
+  const element = categoryListRef.value
+  if (!element) {
+    hasMoreCategories.value = false
+    return
+  }
+  hasMoreCategories.value = element.scrollLeft + element.clientWidth < element.scrollWidth - 4
+}
+
+// Hỗ trợ kéo bằng chuột trên máy tính; màn hình cảm ứng vẫn dùng vuốt ngang tự nhiên.
+function startCategoryDrag(event: PointerEvent) {
+  if (event.pointerType === 'touch' || event.button !== 0) return
+  const element = categoryListRef.value
+  if (!element) return
+
+  isCategoryDragging.value = true
+  categoryWasDragged = false
+  categoryDragStartX = event.clientX
+  categoryDragStartScrollLeft = element.scrollLeft
+  window.addEventListener('pointermove', moveCategoryDrag)
+  window.addEventListener('pointerup', stopCategoryDrag)
+  window.addEventListener('pointercancel', stopCategoryDrag)
+}
+
+function moveCategoryDrag(event: PointerEvent) {
+  if (!isCategoryDragging.value) return
+  const element = categoryListRef.value
+  if (!element) return
+
+  const distance = event.clientX - categoryDragStartX
+  if (Math.abs(distance) > 4) categoryWasDragged = true
+  if (categoryWasDragged) {
+    element.scrollLeft = categoryDragStartScrollLeft - distance
+    event.preventDefault()
+    updateCategoryOverflow()
+  }
+}
+
+function stopCategoryDrag() {
+  if (!isCategoryDragging.value) return
+  isCategoryDragging.value = false
+  window.removeEventListener('pointermove', moveCategoryDrag)
+  window.removeEventListener('pointerup', stopCategoryDrag)
+  window.removeEventListener('pointercancel', stopCategoryDrag)
+  if (categoryWasDragged) ignoreCategoryClickUntil = Date.now() + 350
+}
+
+function preventClickAfterCategoryDrag(event: MouseEvent) {
+  if (Date.now() < ignoreCategoryClickUntil) {
+    event.preventDefault()
+    event.stopPropagation()
+    ignoreCategoryClickUntil = 0
+  }
+}
+
+function openCategory(categoryId: number | null) {
+  router.push({
+    path: '/search-products',
+    query: categoryId === null ? {} : { category: String(categoryId) },
+  })
+}
+
+async function refreshCategories() {
+  try {
+    const response = await axios.get(`${API_URL}/categories`)
+    const payload: unknown = response.data
+    const categoryList = Array.isArray(payload)
+      ? payload as Category[]
+      : typeof payload === 'object' && payload !== null && Array.isArray((payload as Record<string, unknown>).data)
+        ? (payload as { data: Category[] }).data
+        : []
+    categories.value = categoryList.filter(isActiveCategory)
+  } catch (error) {
+    console.error('Không tải được danh mục:', error)
+  }
+}
+
+function handleWindowFocus() {
+  // Cập nhật danh sách nếu người dùng vừa thêm danh mục ở tab quản trị khác.
+  void refreshCategories()
+}
+
 function extractList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[]
   if (typeof payload === 'object' && payload !== null) {
@@ -304,30 +407,16 @@ async function loadProduct() {
   product.value = null
 
   try {
-    const [productResult, categoryResult] = await Promise.allSettled([
-  axios.get(`${API_URL}/products/${encodeURIComponent(productIdentifier.value!)}`),
-  axios.get(`${API_URL}/categories`),
-])
+    const productResult = await axios.get(
+      `${API_URL}/products/${encodeURIComponent(productIdentifier.value!)}`,
+    )
 
-    if (productResult.status !== 'fulfilled') {
-      throw productResult.reason
-    }
-
-    product.value = extractProduct(productResult.value.data)
+    product.value = extractProduct(productResult.data)
     if (!product.value) {
       throw new Error('Dữ liệu sản phẩm không đúng định dạng.')
     }
 
-    if (categoryResult.status === 'fulfilled') {
-      const payload: unknown = categoryResult.value.data
-      if (Array.isArray(payload)) {
-        categories.value = payload as Category[]
-      } else if (typeof payload === 'object' && payload !== null) {
-        const data = (payload as Record<string, unknown>).data
-        categories.value = Array.isArray(data) ? data as Category[] : []
-      }
-    }
-
+    await refreshCategories()
     void loadRelatedProducts()
   } catch (error) {
     console.error('Không tải được chi tiết sản phẩm:', error)
@@ -505,17 +594,30 @@ function goBack() {
 }
 
 watch(productIdentifier, loadProduct)
+watch(categories, async () => {
+  await nextTick()
+  updateCategoryOverflow()
+})
 onMounted(() => {
   window.addEventListener('keydown', handleViewerKeydown)
+  window.addEventListener('focus', handleWindowFocus)
+  window.addEventListener('resize', updateCategoryOverflow)
   loadProduct()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleViewerKeydown)
+  window.removeEventListener('focus', handleWindowFocus)
+  window.removeEventListener('resize', updateCategoryOverflow)
+  window.removeEventListener('pointermove', moveCategoryDrag)
+  window.removeEventListener('pointerup', stopCategoryDrag)
+  window.removeEventListener('pointercancel', stopCategoryDrag)
 })
 </script>
 
 <template>
   <main class="detail-page">
+
+
     <section class="detail-hero">
       <div class="detail-container">
         <router-link to="/search-products" class="detail-back">
@@ -526,6 +628,40 @@ onBeforeUnmount(() => {
         <p>Khám phá câu chuyện và thông tin của tác phẩm bạn yêu thích.</p>
       </div>
     </section>
+
+    <aside v-if="categories.length" class="detail-category-bar" aria-label="Danh mục tác phẩm">
+      <div class="detail-category-bar-inner">
+        <span class="detail-category-bar-label">Danh mục</span>
+        <div class="detail-category-track" :class="{ 'detail-category-track-has-more': hasMoreCategories }">
+          <div
+            ref="categoryListRef"
+            class="detail-category-list"
+            :class="{ 'is-category-dragging': isCategoryDragging }"
+            @scroll="updateCategoryOverflow"
+            @pointerdown="startCategoryDrag"
+            @click.capture="preventClickAfterCategoryDrag"
+          >
+            <button
+              type="button"
+              class="detail-category-chip detail-category-chip-all"
+              @click="openCategory(null)"
+            >Tất cả</button>
+            <button
+              v-for="category in categories"
+              :key="category.id"
+              type="button"
+              class="detail-category-chip"
+              :class="{ 'detail-category-chip-current': currentProductCategoryId === Number(category.id) }"
+              :aria-current="currentProductCategoryId === Number(category.id) ? 'true' : undefined"
+              @click="openCategory(category.id)"
+            >
+              <span>{{ category.name }}</span>
+              <span v-if="currentProductCategoryId === Number(category.id)" class="detail-category-current-dot" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
 
     <section class="detail-content">
       <div v-if="loading" class="detail-state">Đang tải thông tin sản phẩm...</div>
@@ -725,6 +861,135 @@ onBeforeUnmount(() => {
   font-family: Arial, "Segoe UI", Tahoma, sans-serif;
 }
 .detail-page { min-height: 70vh; background: #f8fafc; color: #1e293b; }
+.detail-category-bar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  width: 100%;
+  border-top: 1px solid rgb(255 255 255 / 72%);
+  border-bottom: 1px solid rgb(226 232 240 / 85%);
+  background: rgb(255 255 255 / 82%);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 9%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+.detail-category-bar-inner {
+  display: flex;
+  width: 100%;
+  max-width: 1240px;
+  min-height: 62px;
+  align-items: center;
+  gap: 17px;
+  margin: 0 auto;
+  padding: 8px 24px;
+}
+.detail-category-bar-label {
+  flex: 0 0 auto;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.detail-category-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.detail-category-track::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 64px;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgb(255 255 255 / 0%) 0%, rgb(255 255 255 / 54%) 45%, rgb(255 255 255 / 94%) 100%);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  transition: opacity .22s ease;
+}
+.detail-category-track-has-more::after { opacity: 1; }
+.detail-category-list {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-behavior: smooth;
+  padding: 4px 2px;
+  touch-action: pan-x;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.detail-category-list.is-category-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
+}
+.detail-category-list::-webkit-scrollbar { display: none; }
+.detail-category-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .18s ease, border-color .18s ease, background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.detail-category-chip:hover,
+.detail-category-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: #f87171;
+  background: #fff1f2;
+  color: #b91c1c;
+  box-shadow: 0 4px 12px rgb(220 38 38 / 9%);
+  outline: none;
+}
+.detail-category-chip-current {
+  border-color: #dc2626;
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+  color: #fff;
+  box-shadow: 0 5px 14px rgb(220 38 38 / 20%);
+}
+.detail-category-chip-current:hover,
+.detail-category-chip-current:focus-visible {
+  border-color: #991b1b;
+  background: #991b1b;
+  color: #fff;
+}
+.detail-category-current-dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 5px;
+  border-radius: 50%;
+  background: #fecaca;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 18%);
+}
+@media (max-width: 640px) {
+  .detail-category-bar-inner { min-height: 56px; gap: 10px; padding: 7px 12px; }
+  .detail-category-bar-label { font-size: 9px; letter-spacing: .04em; }
+  .detail-category-chip { min-height: 33px; padding: 7px 10px; font-size: 11px; }
+  .detail-category-list { gap: 6px; }
+  .detail-category-track::after { width: 42px; }
+}
+
+
 .detail-container, .detail-content { width: 100%; max-width: 1240px; margin: 0 auto; }
 .detail-hero { padding: 36px 24px 48px; color: #fff; background: radial-gradient(circle at 88% 10%, rgb(220 38 38 / 20%), transparent 32%), linear-gradient(125deg, #0f172a, #1e293b 65%, #3b1724); }
 .detail-back { display: inline-flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: 13px; text-decoration: none; }
@@ -783,7 +1048,7 @@ onBeforeUnmount(() => {
 .related-product-no-image { color: #94a3b8; font-size: 12px; }
 .related-product-info { display: flex; flex: 1; flex-direction: column; align-items: flex-start; padding: 15px; }
 .related-product-category { margin-bottom: 8px; color: #be123c; font-size: 10px; font-weight: 800; }
-.related-product-info h3 { display: -webkit-box; min-height: 42px; margin: 0; overflow: hidden; color: #0f172a; font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.related-product-info h3 { display: -webkit-box; min-height: 42px; margin: 0; overflow: hidden; color: #0f172a; font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;line-clamp: 3; }
 .related-product-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; color: #dc2626; font-size: 12px; font-weight: 800; }
 .related-products-state { margin: 0; padding: 24px; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; font-size: 13px; text-align: center; }
 .detail-info-panel { padding: 30px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 8px 25px rgb(15 23 42 / 4%); }

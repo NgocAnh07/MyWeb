@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
 import { useRouter } from 'vue-router'
 
 interface Blog {
   id: number
+  slug?: string
   title: string
   img: string | null
   description: string
@@ -31,16 +32,52 @@ const inlineImageUploading = ref(false)
 let savedEditorRange: Range | null = null
 const form = ref({ title: '', description: '' })
 const currentPage = ref(1)
-const lastPage = ref(1)
-const totalBlogs = ref(0)
+const pageSize = 20
+
+// Các bài viết được tải từ tất cả các trang của Laravel, sau đó lọc và phân trang ở FE.
+const totalBlogs = computed(() => blogs.value.length)
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, character => character === 'Đ' ? 'D' : 'd')
+    .toLocaleLowerCase('vi-VN')
+    .trim()
+}
+
+function plainText(value: string | null | undefined): string {
+  if (!value) return ''
+  const template = document.createElement('template')
+  template.innerHTML = value
+  return (template.content.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
 
 const filteredBlogs = computed(() => {
-  const keyword = searchQuery.value.trim().toLocaleLowerCase('vi-VN')
+  const keyword = normalizeSearchText(searchQuery.value)
   if (!keyword) return blogs.value
-  return blogs.value.filter(blog =>
-    blog.title.toLocaleLowerCase('vi-VN').includes(keyword) ||
-    blog.description.toLocaleLowerCase('vi-VN').includes(keyword),
-  )
+
+  const terms = keyword.split(/\s+/).filter(Boolean)
+  return blogs.value.filter(blog => {
+    const searchable = normalizeSearchText(
+      `${blog.id} ${blog.title} ${blog.slug ?? ''} ${plainText(blog.description)} ${blog.created_at ?? ''}`,
+    )
+    return searchable.includes(keyword) || terms.every(term => searchable.includes(term))
+  })
+})
+
+const lastPage = computed(() => Math.max(1, Math.ceil(filteredBlogs.value.length / pageSize)))
+const paginatedBlogs = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredBlogs.value.slice(start, start + pageSize)
+})
+
+watch(searchQuery, () => {
+  currentPage.value = 1
+})
+
+watch(lastPage, pageCount => {
+  if (currentPage.value > pageCount) currentPage.value = pageCount
 })
 
 function getConfig() {
@@ -102,32 +139,54 @@ function imageUrl(path: string | null | undefined): string {
   return `${STORAGE_BASE_URL}/storage/${cleanPath}`
 }
 
-async function loadBlogs(page = currentPage.value) {
+async function loadBlogs() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const response = await axios.get(`${API_URL}/blogs?page=${page}`, getConfig())
-    const payload: unknown = response.data
-    blogs.value = extractList(payload)
-    if (typeof payload === 'object' && payload !== null && !Array.isArray(payload)) {
-      const data = payload as Record<string, unknown>
-      currentPage.value = typeof data.current_page === 'number' ? data.current_page : page
-      lastPage.value = typeof data.last_page === 'number' ? data.last_page : 1
-      totalBlogs.value = typeof data.total === 'number' ? data.total : blogs.value.length
-    } else {
-      currentPage.value = 1
-      lastPage.value = 1
-      totalBlogs.value = blogs.value.length
+    // Trang API đầu tiên cho biết tổng số trang của Laravel.
+    const firstResponse = await axios.get(`${API_URL}/blogs?page=1`, getConfig())
+    const firstPayload: unknown = firstResponse.data
+    const allBlogs = extractList(firstPayload)
+
+    let apiLastPage = 1
+    if (typeof firstPayload === 'object' && firstPayload !== null && !Array.isArray(firstPayload)) {
+      const payload = firstPayload as Record<string, unknown>
+      if (typeof payload.last_page === 'number') {
+        apiLastPage = Math.max(1, payload.last_page)
+      } else if (typeof payload.meta === 'object' && payload.meta !== null) {
+        const metaLastPage = (payload.meta as Record<string, unknown>).last_page
+        if (typeof metaLastPage === 'number') apiLastPage = Math.max(1, metaLastPage)
+      }
     }
+
+    // Lấy tiếp toàn bộ các trang API để từ khóa được so với tất cả bài viết.
+    if (apiLastPage > 1) {
+      const remainingPages = await Promise.allSettled(
+        Array.from({ length: apiLastPage - 1 }, (_, index) =>
+          axios.get(`${API_URL}/blogs?page=${index + 2}`, getConfig()),
+        ),
+      )
+
+      for (const result of remainingPages) {
+        if (result.status === 'fulfilled') {
+          allBlogs.push(...extractList(result.value.data))
+        }
+      }
+    }
+
+    // Loại trùng nếu API trả về bản ghi lặp ở nhiều trang.
+    const uniqueBlogs = new Map<number, Blog>()
+    for (const blog of allBlogs) uniqueBlogs.set(blog.id, blog)
+    blogs.value = Array.from(uniqueBlogs.values())
+
+    // Số bài hiển thị ở footer là số lượng thực tế đã tải về.
   } catch (error: unknown) {
     blogs.value = []
-    totalBlogs.value = 0
     errorMessage.value = getErrorMessage(error)
   } finally {
     loading.value = false
   }
 }
-
 function clearImagePreview() {
   if (imagePreview.value.startsWith('blob:')) URL.revokeObjectURL(imagePreview.value)
   imagePreview.value = ''
@@ -511,7 +570,8 @@ async function saveBlog() {
     showModal.value = false
     selectedImage.value = null
     clearImagePreview()
-    await loadBlogs(1)
+    currentPage.value = 1
+    await loadBlogs()
   } catch (error: unknown) {
     errorMessage.value = getErrorMessage(error)
   } finally {
@@ -526,10 +586,7 @@ async function deleteBlog(blog: Blog) {
   try {
     await axios.delete(`${API_URL}/blogs/${blog.id}`, getConfig())
     successMessage.value = 'Xóa bài viết thành công.'
-    const page = blogs.value.length === 1 && currentPage.value > 1
-      ? currentPage.value - 1
-      : currentPage.value
-    await loadBlogs(page)
+    await loadBlogs()
   } catch (error: unknown) {
     errorMessage.value = getErrorMessage(error)
   }
@@ -551,7 +608,7 @@ async function handleLogout() {
 
 onMounted(() => {
   loadAdminUsername()
-  void loadBlogs(1)
+  void loadBlogs()
 })
 
 onBeforeUnmount(clearImagePreview)
@@ -597,14 +654,14 @@ onBeforeUnmount(clearImagePreview)
         <div class="blog-summary"><div class="blog-summary-icon">▤</div><div><span>Tổng bài viết</span><strong>{{ totalBlogs }}</strong></div></div>
 
         <section class="blog-table-panel">
-          <div class="blog-toolbar"><div><h3>Danh sách bài viết</h3><p>Dữ liệu được tải từ Laravel API.</p></div><div class="blog-search"><span>⌕</span><input v-model="searchQuery" type="search" placeholder="Tìm tiêu đề hoặc nội dung..." /></div></div>
+          <div class="blog-toolbar"><div><h3>Danh sách bài viết</h3><p>Dữ liệu được tải từ Laravel API.</p></div><div class="blog-search"><span>⌕</span><input v-model="searchQuery" type="search" placeholder="Tìm tiêu đề, nội dung hoặc ID..." /></div></div>
           <div class="blog-table-wrap">
             <table>
               <thead><tr><th>Bài viết</th><th>Ảnh</th><th>Mô tả</th><th>Thao tác</th></tr></thead>
               <tbody>
                 <tr v-if="loading"><td colspan="4" class="blog-empty">Đang tải bài viết...</td></tr>
                 <tr v-else-if="filteredBlogs.length === 0"><td colspan="4" class="blog-empty">{{ searchQuery ? 'Không tìm thấy bài viết phù hợp.' : 'Chưa có bài viết nào.' }}</td></tr>
-                <tr v-for="blog in filteredBlogs" :key="blog.id">
+                <tr v-for="blog in paginatedBlogs" :key="blog.id">
                   <td><div class="blog-title-cell"><strong>{{ blog.title }}</strong><small>#{{ blog.id }}</small></div></td>
                   <td><img v-if="blog.img" class="blog-thumbnail" :src="imageUrl(blog.img)" :alt="blog.title" /><span v-else class="blog-no-image">Chưa có ảnh</span></td>
                   <td><div class="blog-description">{{ textOnly(blog.description) }}</div></td>
@@ -613,7 +670,7 @@ onBeforeUnmount(clearImagePreview)
               </tbody>
             </table>
           </div>
-          <div class="blog-table-footer"><span>Tổng {{ totalBlogs }} bài viết · Trang {{ currentPage }} / {{ lastPage }}</span><div class="blog-pagination"><button :disabled="loading || currentPage <= 1" @click="loadBlogs(currentPage - 1)">Trước</button><button :disabled="loading || currentPage >= lastPage" @click="loadBlogs(currentPage + 1)">Sau</button></div></div>
+          <div class="blog-table-footer"><span>Hiển thị {{ filteredBlogs.length ? (currentPage - 1) * pageSize + 1 : 0 }}–{{ Math.min(currentPage * pageSize, filteredBlogs.length) }} / {{ filteredBlogs.length }} kết quả · Tổng {{ totalBlogs }} bài viết · Trang {{ currentPage }} / {{ lastPage }}</span><div class="blog-pagination"><button :disabled="loading || currentPage <= 1" @click="currentPage--">Trước</button><button :disabled="loading || currentPage >= lastPage" @click="currentPage++">Sau</button></div></div>
         </section>
       </section>
     </main>
