@@ -120,18 +120,22 @@ public function show(string $product)
             $data['description'] = $this->sanitizeProductHtml($data['description']);
         }
 
+        // Không ghi đè cùng URL khi thay ảnh chính: trình duyệt/CDN có thể cache ảnh cũ.
+        // Chỉ xóa ảnh cũ sau khi bản ghi sản phẩm được cập nhật thành công.
+        $oldMainImageToDelete = null;
+        $newMainImagePath = null;
+
         if ($request->hasFile('img')) {
             $oldImage = $product->img;
             $newImage = $this->saveProductImage(
                 $request->file('img'),
                 $data['name'] ?? $product->name,
-                $oldImage
+                $oldImage,
+                true
             );
             $data['img'] = $newImage;
-
-            if ($oldImage && $oldImage !== $newImage) {
-                Storage::disk('public')->delete($oldImage);
-            }
+            $newMainImagePath = $newImage;
+            $oldMainImageToDelete = $oldImage;
         } elseif (
             isset($data['name']) &&
             $data['name'] !== $product->name &&
@@ -159,7 +163,25 @@ public function show(string $product)
             }
         }
 
-        $product->update($data);
+        try {
+            $product->update($data);
+        } catch (\Throwable $exception) {
+            // Tránh để lại file ảnh mới mồ côi nếu cập nhật database thất bại.
+            if ($newMainImagePath) {
+                Storage::disk('public')->delete($newMainImagePath);
+            }
+            throw $exception;
+        }
+
+        if (
+            $oldMainImageToDelete &&
+            $oldMainImageToDelete !== $product->img &&
+            !Product::where('img', $oldMainImageToDelete)
+                ->where('id', '!=', $product->id)
+                ->exists()
+        ) {
+            Storage::disk('public')->delete($oldMainImageToDelete);
+        }
 
         if ($replaceAdditionalImages) {
             $oldImages = $product->images()->get();
@@ -485,20 +507,29 @@ private function saveAdditionalProductImage(
 }
 
 private function saveProductImage(
-    UploadedFile $file,
+    \Illuminate\Http\UploadedFile $file,
     string $productName,
-    ?string $currentPath = null
+    ?string $currentPath = null,
+    bool $forceUniquePath = false
 ): string {
     $baseName = Str::slug($productName) ?: 'product';
     $extension = $file->guessExtension() ?: 'jpg';
+
+    // Khi thay ảnh, thêm hậu tố mới vào tên file để URL ảnh không bị cache bản cũ.
+    // Giới hạn phần slug để không làm tên file quá dài.
+    if ($forceUniquePath) {
+        $baseName = substr($baseName, 0, 120)
+            . '-' . now()->format('YmdHis')
+            . '-' . Str::lower(Str::random(6));
+    }
 
     $filename = "{$baseName}.{$extension}";
     $path = "products/{$filename}";
     $counter = 2;
     $disk = Storage::disk('public');
 
-    // Tránh ghi đè ảnh của sản phẩm khác.
-    while ($disk->exists($path) && $path !== $currentPath) {
+    // Không ghi đè file đang tồn tại hoặc đường dẫn ảnh hiện tại.
+    while ($disk->exists($path) || $path === $currentPath) {
         $filename = "{$baseName}-{$counter}.{$extension}";
         $path = "products/{$filename}";
         $counter++;
