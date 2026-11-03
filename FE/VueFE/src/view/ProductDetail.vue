@@ -94,7 +94,8 @@ function safeDescriptionHtml(value: string): string {
 
 const renderedDescription = computed(() => safeDescriptionHtml(product.value?.description ?? ''))
 
-// Xác định mô tả dài dựa trên chiều cao nội dung thực tế, không dựa vào số ký tự.
+// Đo chiều cao tự nhiên của toàn bộ mô tả, không phụ thuộc cấu trúc HTML.
+// Cách này nhận diện được cả nội dung chỉ gồm text, H2/H3 hoặc kết hợp nhiều thẻ.
 async function measureDescriptionOverflow() {
   await nextTick()
   if (descriptionExpanded.value) return
@@ -105,7 +106,20 @@ async function measureDescriptionOverflow() {
     return
   }
 
-  isDescriptionLong.value = element.scrollHeight > element.clientHeight + 2
+  // Ghi lại chiều cao đang bị giới hạn trước khi tạm bỏ giới hạn để đo.
+  const collapsedHeight = element.clientHeight
+  const previousMaxHeight = element.style.maxHeight
+  const previousOverflow = element.style.overflow
+
+  element.style.maxHeight = 'none'
+  element.style.overflow = 'visible'
+  const fullHeight = element.getBoundingClientRect().height
+
+  // Khôi phục ngay trạng thái thu gọn; không làm thay đổi giao diện người dùng.
+  element.style.maxHeight = previousMaxHeight
+  element.style.overflow = previousOverflow
+
+  isDescriptionLong.value = fullHeight > collapsedHeight + 2
 }
 
 watch(renderedDescription, () => {
@@ -426,7 +440,11 @@ async function loadProduct() {
       errorMessage.value = 'Không tải được chi tiết sản phẩm. Hãy kiểm tra kết nối Backend.'
     }
   } finally {
+    // Đợi Vue render xong phần chi tiết sau khi trạng thái loading tắt.
+    // Đo ở đây là bắt buộc cho mô tả chỉ có text/H2/H3 vì chúng không phát
+    // sinh sự kiện load như mô tả có ảnh.
     loading.value = false
+    await measureDescriptionOverflow()
   }
 }
 
@@ -602,12 +620,14 @@ onMounted(() => {
   window.addEventListener('keydown', handleViewerKeydown)
   window.addEventListener('focus', handleWindowFocus)
   window.addEventListener('resize', updateCategoryOverflow)
+  window.addEventListener('resize', measureDescriptionOverflow)
   loadProduct()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleViewerKeydown)
   window.removeEventListener('focus', handleWindowFocus)
   window.removeEventListener('resize', updateCategoryOverflow)
+  window.removeEventListener('resize', measureDescriptionOverflow)
   window.removeEventListener('pointermove', moveCategoryDrag)
   window.removeEventListener('pointerup', stopCategoryDrag)
   window.removeEventListener('pointercancel', stopCategoryDrag)
@@ -1048,7 +1068,7 @@ onBeforeUnmount(() => {
 .related-product-no-image { color: #94a3b8; font-size: 12px; }
 .related-product-info { display: flex; flex: 1; flex-direction: column; align-items: flex-start; padding: 15px; }
 .related-product-category { margin-bottom: 8px; color: #be123c; font-size: 10px; font-weight: 800; }
-.related-product-info h3 { display: -webkit-box; min-height: 42px; margin: 0; overflow: hidden; color: #0f172a; font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2;line-clamp: 3; }
+.related-product-info h3 { display: -webkit-box; min-height: 42px; margin: 0; overflow: hidden; color: #0f172a; font-size: 15px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .related-product-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; color: #dc2626; font-size: 12px; font-weight: 800; }
 .related-products-state { margin: 0; padding: 24px; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; font-size: 13px; text-align: center; }
 .detail-info-panel { padding: 30px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 8px 25px rgb(15 23 42 / 4%); }
@@ -1057,7 +1077,7 @@ onBeforeUnmount(() => {
 .detail-info-panel h2 { margin: 0; color: #0f172a; font-size: clamp(25px, 3vw, 34px); font-weight: 800; line-height: 1.3; overflow-wrap: anywhere; }
 .detail-divider { height: 1px; margin: 23px 0; background: #e2e8f0; }
 .detail-info-panel h3 { margin: 0 0 10px; color: #334155; font-size: 14px; font-weight: 800; }
-.detail-description { margin: 0; color: #64748b; font-size: 14px; line-height: 1.9; overflow-wrap: anywhere; }
+.detail-description { display: flow-root; margin: 0; color: #64748b; font-size: 14px; line-height: 1.9; overflow-wrap: anywhere; }
 .detail-description :deep(p) { margin: 0 0 12px; }
 .detail-description :deep(strong), .detail-description :deep(b) { color: #334155; font-weight: 800 !important; }
 .detail-description :deep(h2) { margin: 22px 0 10px; color: #0f172a; font-size: 22px; font-weight: 800; line-height: 1.4; }
