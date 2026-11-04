@@ -677,7 +677,7 @@ onBeforeUnmount(() => {
           <span aria-hidden="true">←</span> Quay lại bộ sưu tập
         </router-link>
         <span class="detail-kicker">DUY CHÂN DUNG · GALLERY</span>
-        <h1>{{ product?.name || 'Chi tiết tác phẩm' }}</h1>
+        
         <p>Khám phá câu chuyện và thông tin của tác phẩm bạn yêu thích.</p>
       </div>
     </section>
