@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
 import { useRoute } from 'vue-router'
+import { absoluteImageUrl, plainText, setSeoMeta } from '../utils/seo'
 
 interface BlogPost {
   id: number
@@ -16,6 +17,41 @@ interface BlogPost {
 
 const route = useRoute()
 const blog = ref<BlogPost | null>(null)
+
+watch(blog, (item) => {
+  if (!item) {
+    setSeoMeta({
+      title: 'Bài viết về tranh chân dung | Duy Chân Dung',
+      description: 'Khám phá kiến thức, câu chuyện và kinh nghiệm về tranh chân dung tại Duy Chân Dung.',
+      robots: 'index, follow, max-image-preview:large',
+    })
+    return
+  }
+
+  const description = plainText(item.description) || `Đọc bài viết ${item.title} tại Duy Chân Dung.`
+  const canonicalPath = item.slug ? `/${item.slug}` : route.path
+  const image = absoluteImageUrl(item.img ? imageUrl(item.img) : null)
+
+  setSeoMeta({
+    title: `${item.title} | Duy Chân Dung`,
+    description,
+    canonical: `https://duychandung.com${canonicalPath}`,
+    image,
+    type: 'article',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: item.title,
+      description,
+      image: image ? [image] : undefined,
+      datePublished: item.created_at,
+      dateModified: item.updated_at || item.created_at,
+      mainEntityOfPage: `https://duychandung.com${canonicalPath}`,
+      author: { '@type': 'Organization', name: 'Duy Chân Dung' },
+      publisher: { '@type': 'Organization', name: 'Duy Chân Dung' },
+    },
+  })
+})
 const relatedBlogs = ref<BlogPost[]>([])
 const loading = ref(false)
 const relatedLoading = ref(false)
@@ -76,6 +112,7 @@ function extractBlog(payload: unknown): BlogPost | null {
   if (typeof item.id !== 'number' || typeof item.title !== 'string') return null
   return {
     id: item.id,
+    slug: typeof item.slug === 'string' ? item.slug : undefined,
     title: item.title,
     img: typeof item.img === 'string' ? item.img : null,
     description: typeof item.description === 'string' ? item.description : '',
@@ -149,7 +186,7 @@ function safeDescriptionHtml(rawValue: string): string {
         } else if (src.startsWith('/storage/')) {
           node.setAttribute('src', imageUrl(src))
         }
-        node.setAttribute('alt', node.getAttribute('alt') ?? '')
+        node.setAttribute('alt', (node.getAttribute('alt') ?? '').trim() || `Hình ảnh minh họa bài viết ${blog.value?.title ?? 'Duy Chân Dung'}`)
         node.setAttribute('loading', 'lazy')
       }
     })

@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
 import { useRoute, useRouter } from 'vue-router'
+import { absoluteImageUrl, plainText, setSeoMeta } from '../utils/seo'
 
 interface Category {
   id: number
@@ -31,6 +32,38 @@ interface Product {
 const route = useRoute()
 const router = useRouter()
 const product = ref<Product | null>(null)
+
+watch(product, (item) => {
+  if (!item) {
+    setSeoMeta({
+      title: 'Tranh chân dung theo yêu cầu | Duy Chân Dung',
+      description: 'Khám phá các tác phẩm tranh chân dung được thực hiện theo yêu cầu tại Duy Chân Dung.',
+      robots: 'index, follow, max-image-preview:large',
+    })
+    return
+  }
+
+  const description = plainText(item.description) || `Tìm hiểu tác phẩm ${item.name} tại Duy Chân Dung. Nhận vẽ tranh chân dung và tranh sơn dầu theo yêu cầu.`
+  const canonicalPath = item.slug ? `/${item.slug}` : route.path
+  const image = absoluteImageUrl(item.img ? imageUrl(item.img) : null)
+
+  setSeoMeta({
+    title: `${item.name} | Tranh vẽ theo yêu cầu - Duy Chân Dung`,
+    description,
+    canonical: `https://duychandung.com${canonicalPath}`,
+    image,
+    type: 'product',
+    structuredData: {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: item.name,
+      description,
+      image: image ? [image] : undefined,
+      url: `https://duychandung.com${canonicalPath}`,
+      brand: { '@type': 'Brand', name: 'Duy Chân Dung' },
+    },
+  })
+})
 const categories = ref<Category[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
@@ -86,7 +119,7 @@ function safeDescriptionHtml(value: string): string {
       const src = (element.getAttribute('src') ?? '').trim()
       if (!/^(https?:\/\/|\/storage\/|storage\/)/i.test(src)) element.remove()
       const alt = element.getAttribute('alt')
-      if (alt === null || !alt.trim()) element.setAttribute('alt', '')
+      if (alt === null || !alt.trim()) element.setAttribute('alt', product.value?.name ? `Hình ảnh minh họa ${product.value.name}` : 'Hình ảnh minh họa tác phẩm tranh')
     }
   })
   return template.innerHTML
@@ -644,7 +677,7 @@ onBeforeUnmount(() => {
           <span aria-hidden="true">←</span> Quay lại bộ sưu tập
         </router-link>
         <span class="detail-kicker">DUY CHÂN DUNG · GALLERY</span>
-        <h1>Chi tiết <span>tác phẩm</span></h1>
+        <h1>{{ product?.name || 'Chi tiết tác phẩm' }}</h1>
         <p>Khám phá câu chuyện và thông tin của tác phẩm bạn yêu thích.</p>
       </div>
     </section>

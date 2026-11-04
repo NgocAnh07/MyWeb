@@ -2,6 +2,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import axios from 'axios'
 import { API_URL } from '../config/api'
+import { setSeoMeta } from '../utils/seo'
 
 import HomeView from '../view/HomeView.vue'
 import LoginView from '../view/LoginView.vue'
@@ -103,6 +104,35 @@ const router = createRouter({
   component: SlugDetail,
 }
   ],
+})
+
+router.afterEach((to) => {
+  // Trang quản trị, đăng nhập và tìm kiếm không cần xuất hiện trên Google.
+  if (to.matched.some(record => record.meta.requiresAdmin === true)) {
+    setSeoMeta({
+      title: 'Quản trị website | Duy Chân Dung',
+      description: 'Khu vực quản trị nội bộ của website Duy Chân Dung.',
+      robots: 'noindex, nofollow',
+    })
+    return
+  }
+
+  if (to.path === '/login') {
+    setSeoMeta({
+      title: 'Đăng nhập | Duy Chân Dung',
+      description: 'Đăng nhập khu vực quản trị Duy Chân Dung.',
+      robots: 'noindex, nofollow',
+    })
+    return
+  }
+
+  if (to.path === '/search-products') {
+    setSeoMeta({
+      title: 'Bộ sưu tập tranh | Duy Chân Dung',
+      description: 'Tìm kiếm và khám phá các mẫu tranh chân dung, tranh sơn dầu tại Duy Chân Dung.',
+      robots: 'index, follow, max-image-preview:large',
+    })
+  }
 })
 
 // Bảo vệ toàn bộ trang quản trị.

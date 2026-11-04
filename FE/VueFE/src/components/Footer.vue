@@ -69,10 +69,10 @@ function handleNewsletter() {
             <!-- TIKTOK -->
              <a href="https://www.tiktok.com/@duy.chn.dung"
               class="w-9 h-9 rounded-full flex items-center justify-center hover:opacity-90 hover:scale-110 transition-all"
-              title="Zalo">
+              title="TikTok">
               <img
   src="/assets/tiktok.avif"
-  alt="tiktok"
+  alt="Kênh TikTok Duy Chân Dung"
   class="w-7 h-7 object-contain"
 />
             </a>

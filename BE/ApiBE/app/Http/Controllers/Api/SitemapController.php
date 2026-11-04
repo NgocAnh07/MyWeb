@@ -22,7 +22,6 @@ class SitemapController extends Controller
 
         // Các trang cố định
         $xml .= $this->urlTag($baseUrl . '/', null, '1.0');
-        $xml .= $this->urlTag($baseUrl . '/search-products', null, '0.8');
 
         // Sản phẩm: FE dùng dạng /{slug}
         Product::query()

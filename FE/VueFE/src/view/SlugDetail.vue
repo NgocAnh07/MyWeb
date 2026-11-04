@@ -6,6 +6,7 @@ import axios from 'axios'
 import type { Component } from 'vue'
 
 import { API_URL } from '../config/api'
+import { setSeoMeta } from '../utils/seo'
 import ProductDetail from './ProductDetail.vue'
 import BlogDetail from './BlogDetail.vue'
 
@@ -48,6 +49,11 @@ async function resolveSlug() {
     } catch {
       if (version === requestVersion) {
         resolvedComponent.value = null
+        setSeoMeta({
+          title: 'Không tìm thấy nội dung | Duy Chân Dung',
+          description: 'Trang bạn tìm kiếm không tồn tại hoặc đã được chuyển đi.',
+          robots: 'index, follow, max-image-preview:large',
+        })
       }
     }
   } finally {

@@ -1,0 +1,11 @@
+Options -MultiViews
+RewriteEngine On
+
+# Không can thiệp API Laravel hoặc file/thư mục có thật.
+RewriteRule ^api(?:/|$) - [L]
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Vue Router history mode: chuyển URL frontend về index.html.
+RewriteRule ^ index.html [L]

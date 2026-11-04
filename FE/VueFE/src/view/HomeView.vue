@@ -3,6 +3,7 @@
 import { onMounted, nextTick, ref } from 'vue'
 import axios from 'axios'
 import { API_URL, STORAGE_BASE_URL } from '../config/api'
+import { setSeoMeta } from '../utils/seo'
 
 interface FeaturedCategory {
   id: number
@@ -18,6 +19,22 @@ interface FeaturedProduct {
   category_id?: number | null
   category?: FeaturedCategory
 }
+
+setSeoMeta({
+  title: 'Vẽ Tranh Chân Dung Theo Yêu Cầu | Duy Chân Dung',
+  description: 'Duy Chân Dung nhận vẽ tranh chân dung theo ảnh, tranh sơn dầu và tranh quà tặng theo yêu cầu. Tư vấn mẫu, chất liệu và báo giá phù hợp.',
+  canonical: 'https://duychandung.com/',
+  image: 'https://duychandung.com/assets/logo.jpeg',
+  type: 'website',
+  structuredData: {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Duy Chân Dung',
+    url: 'https://duychandung.com/',
+    inLanguage: 'vi-VN',
+    description: 'Dịch vụ vẽ tranh chân dung theo yêu cầu.'
+  }
+})
 
 const featuredProducts = ref<FeaturedProduct[]>([])
 // Banner trang chủ, dùng ảnh mặc định nếu chưa có banner từ API.
@@ -300,8 +317,8 @@ onMounted(async () => {
           data-aos="fade-up"
           data-aos-delay="100"
         >
-          Duy
-          <span class="text-red-400">Chân Dung</span>
+          Vẽ tranh
+          <span class="text-red-400">chân dung theo yêu cầu</span>
         </h1>
 
         <p
@@ -369,7 +386,7 @@ onMounted(async () => {
         <div data-aos="fade-right" class="relative">
           <div class="bg-gradient-to-br from-red-600 to-slate-800 rounded-3xl p-1 shadow-2xl max-w-md mx-auto lg:mx-0">
             <div class="bg-slate-100 rounded-3xl p-8 text-center">
-              <img src="/assets/avata.jpg" />
+              <img src="/assets/avata.jpg" alt="Họa sĩ Duy Chân Dung thực hiện tranh chân dung theo yêu cầu" loading="lazy" />
               <div class="mt-4">
                 <div class="font-heading font-bold text-xl text-slate-800">Duy Art</div>
                 <div class="text-red-600 font-medium text-sm">Họa sĩ vẽ tranh Chân Dung- Tranh Sơn dầu Nghệ Thuật</div>
@@ -772,7 +789,7 @@ onMounted(async () => {
           <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <img
   src="/assets/tiktok.avif"
-  alt="Zalo"
+  alt="Kênh TikTok Duy Chân Dung"
   class="w-7 h-7 object-contain"
 />
           </div>
